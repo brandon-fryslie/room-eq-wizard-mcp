@@ -1,0 +1,47 @@
+{
+  "name": "room-eq-wizard-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for Room EQ Wizard — typed REW API control plus LLM-sized acoustic analysis",
+  "type": "module",
+  "bin": {
+    "room-eq-wizard-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "rew",
+    "room-eq-wizard",
+    "acoustics",
+    "audio"
+  ],
+  "author": "Brandon Fryslie",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/brandon-fryslie/room-eq-wizard-mcp.git"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  }
+}
