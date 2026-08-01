@@ -49,6 +49,22 @@ export async function resolveIndex(client: RewClient, measurement: string): Prom
 }
 
 /**
+ * Resolve a UUID-or-index measurement reference to its UUID, for REW payloads
+ * that require a UUID (group membership). Mirror of resolveIndex.
+ * [LAW:parse-dont-validate] an unknown index fails loudly here instead of
+ * posting a fabricated UUID REW would reject with no hint of the cause.
+ */
+export async function resolveUuid(client: RewClient, measurement: string): Promise<string> {
+  if (!/^\d+$/.test(measurement)) return measurement;
+  const index = Number(measurement);
+  const found = (await listMeasurements(client)).find((m) => m.index === index);
+  if (found === undefined) {
+    throw new Error(`no measurement at index ${measurement} — see list_measurements`);
+  }
+  return found.uuid;
+}
+
+/**
  * Run an action that makes REW create measurements (load, import, sweep) and
  * report exactly the ones that appeared, by diffing the measurement list.
  * [LAW:one-source-of-truth] the before/after diff lives once here; with the

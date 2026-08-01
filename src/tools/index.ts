@@ -4,6 +4,7 @@
 import type { ToolDef } from "./registry.js";
 import { statusTools } from "./status.js";
 import { measurementTools } from "./measurements.js";
+import { groupTools } from "./groups.js";
 import { dataTools } from "./data.js";
 import { measureTools } from "./measure.js";
 import { importTools } from "./import.js";
@@ -17,6 +18,7 @@ import { analyzeTools } from "./analyze.js";
 export const allTools: ToolDef[] = [
   ...statusTools,
   ...measurementTools,
+  ...groupTools,
   ...dataTools,
   ...measureTools,
   ...importTools,

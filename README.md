@@ -34,12 +34,13 @@ claude mcp add rew -- npx -y room-eq-wizard-mcp
 
 The REW API address defaults to `http://127.0.0.1:4735`; override with the `REW_API_URL` environment variable if you run REW on another port.
 
-## Tools (40)
+## Tools (46)
 
 | Area | Tools |
 |---|---|
 | Status | `status`, `list_api_commands` |
 | Measurements | `list_measurements`, `get_measurement`, `rename_measurement`, `delete_measurement`, `save_all_measurements`, `load_measurement_files`, `run_measurement_command`, `get_measurement_commands` |
+| Groups | `list_groups`, `create_group`, `update_group`, `delete_group`, `add_measurements_to_group`, `get_group_measurements` |
 | Data | `get_frequency_response`, `get_rt60`, `get_distortion` |
 | Measuring | `run_sweep` |
 | Import | `import_frequency_response`, `import_impulse_response`, `import_frequency_response_data`, `import_impulse_response_data`, `import_rta_file`, `import_sweep_recordings` |

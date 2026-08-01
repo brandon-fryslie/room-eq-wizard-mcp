@@ -113,10 +113,29 @@ export const distortionSchema = z.looseObject({
 });
 
 export const groupInfoSchema = z.looseObject({
-  uuid: z.string().optional(),
+  // Groups are addressed by UUID only (names are user-editable), and every
+  // GroupInfo REW returns carries one — so the stamp requires it.
+  uuid: z.string(),
   name: z.string().optional(),
   notes: z.string().optional(),
 });
+export type GroupInfo = z.output<typeof groupInfoSchema>;
+
+/**
+ * [LAW:one-type-per-behavior] Some REW collection endpoints answer an array,
+ * others an index-keyed record (see measurementListSchema); the group endpoints'
+ * choice is not documented. Accept either and stamp a plain array — integer-like
+ * record keys enumerate in ascending order, preserving REW's ordering.
+ */
+const arrayOrIndexed = <S extends z.ZodType>(item: S) =>
+  z
+    .union([z.array(item), z.record(z.string(), item)])
+    .transform((wire): Array<z.output<S>> => (Array.isArray(wire) ? wire : Object.values(wire)));
+
+export const groupListSchema = arrayOrIndexed(groupInfoSchema);
+
+/** GET /groups/:uuid/measurements — summaries of the group's members. */
+export const groupMeasurementsSchema = arrayOrIndexed(measurementSummarySchema);
 
 /** For endpoints whose payload we relay verbatim (command lists, errors, process results). */
 export const unknownSchema = z.unknown();

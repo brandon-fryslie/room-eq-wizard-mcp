@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { RewClient } from "./client.js";
-import { measurementListSchema, unknownSchema } from "./types.js";
+import { groupListSchema, groupMeasurementsSchema, measurementListSchema, unknownSchema } from "./types.js";
 import { alignmentStateEndpoints } from "../tools/alignment.js";
 import { allTools } from "../tools/index.js";
 
@@ -86,6 +86,53 @@ describe.skipIf(!rewIsUp)("live REW", () => {
         await client.delete(`/measurements/${m.uuid}`);
       }
     } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  // room-groups-wwa acceptance: full group lifecycle against a real REW. This
+  // is also what pins the two shapes the API doc leaves open — whether GET
+  // /groups and GET /groups/:uuid/measurements answer arrays or index-keyed
+  // records — since groupListSchema/groupMeasurementsSchema accept both.
+  it("creates, fills, renames, and deletes a measurement group", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "rew-groups-live-"));
+    const filePath = join(dir, "live-group-fr.txt");
+    const points = Array.from({ length: 31 }, (_, i) => `${(20 * 2 ** (i / 3)).toFixed(2)} 75.0 0.0`);
+    await writeFile(filePath, points.join("\n"));
+    const groupName = `live-suite-${Date.now()}`;
+    let groupUuid: string | undefined;
+    let measurementUuid: string | undefined;
+    try {
+      const importTool = allTools.find((t) => t.name === "import_frequency_response");
+      if (importTool === undefined) throw new Error("import_frequency_response tool missing");
+      const imported = (await importTool.handler(
+        client,
+        z.object(importTool.inputSchema).parse({ filePath }),
+      )) as { imported: Array<{ uuid: string }> };
+      measurementUuid = imported.imported[0].uuid;
+
+      const created = (await client.post("/groups", { name: groupName })) as { uuid: string };
+      groupUuid = created.uuid;
+      expect(groupUuid).toBeTruthy();
+
+      const groups = await client.get("/groups", groupListSchema);
+      expect(groups.map((g) => g.uuid)).toContain(groupUuid);
+
+      await client.post(`/groups/${groupUuid}/measurements`, { uuid: measurementUuid });
+      const members = await client.get(`/groups/${groupUuid}/measurements`, groupMeasurementsSchema);
+      expect(members.map((m) => m.uuid)).toContain(measurementUuid);
+
+      await client.put(`/groups/${groupUuid}`, { notes: "written by the live suite" });
+      const renamed = await client.get("/groups", groupListSchema);
+      expect(renamed.find((g) => g.uuid === groupUuid)?.notes).toBe("written by the live suite");
+
+      await client.delete(`/groups/${groupUuid}`);
+      groupUuid = undefined;
+      const after = await client.get("/groups", groupListSchema);
+      expect(after.map((g) => g.uuid)).not.toContain(created.uuid);
+    } finally {
+      if (groupUuid !== undefined) await client.delete(`/groups/${groupUuid}`);
+      if (measurementUuid !== undefined) await client.delete(`/measurements/${measurementUuid}`);
       await rm(dir, { recursive: true, force: true });
     }
   });
