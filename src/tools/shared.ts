@@ -48,6 +48,23 @@ export async function resolveIndex(client: RewClient, measurement: string): Prom
   return found.index;
 }
 
+/**
+ * Run an action that makes REW create measurements (load, import, sweep) and
+ * report exactly the ones that appeared, by diffing the measurement list.
+ * [LAW:one-source-of-truth] the before/after diff lives once here; with the
+ * client in blocking mode the action's HTTP response arrives only after the
+ * measurements exist, so the diff is race-free.
+ */
+export async function measurementsCreatedBy<T>(
+  client: RewClient,
+  action: () => Promise<T>,
+): Promise<{ result: T; created: IndexedMeasurement[] }> {
+  const before = new Set((await listMeasurements(client)).map((m) => m.uuid));
+  const result = await action();
+  const created = (await listMeasurements(client)).filter((m) => !before.has(m.uuid));
+  return { result, created };
+}
+
 /** The most recently added measurement — REW appends at the highest index. */
 export async function newestMeasurement(client: RewClient): Promise<IndexedMeasurement | null> {
   const all = await listMeasurements(client);

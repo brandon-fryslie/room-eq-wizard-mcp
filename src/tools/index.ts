@@ -6,6 +6,7 @@ import { statusTools } from "./status.js";
 import { measurementTools } from "./measurements.js";
 import { dataTools } from "./data.js";
 import { measureTools } from "./measure.js";
+import { importTools } from "./import.js";
 import { generatorTools } from "./generator.js";
 import { splTools } from "./spl.js";
 import { eqTools } from "./eq.js";
@@ -18,6 +19,7 @@ export const allTools: ToolDef[] = [
   ...measurementTools,
   ...dataTools,
   ...measureTools,
+  ...importTools,
   ...generatorTools,
   ...splTools,
   ...eqTools,

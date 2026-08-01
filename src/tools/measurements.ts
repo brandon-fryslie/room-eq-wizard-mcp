@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { defineTool, measurementIdInput } from "./registry.js";
 import { measurementSummarySchema, unknownSchema } from "../rew/types.js";
-import { listMeasurements, summarize } from "./shared.js";
+import { listMeasurements, measurementsCreatedBy, summarize } from "./shared.js";
 
 export const measurementTools = [
   defineTool({
@@ -71,11 +71,10 @@ export const measurementTools = [
       paths: z.array(z.string()).min(1).describe("File paths to load, forward slashes"),
     },
     handler: async (client, args) => {
-      const before = new Set((await listMeasurements(client)).map((m) => m.uuid));
-      await client.command("/measurements/command", { command: "Load", parameters: args.paths });
-      const after = await listMeasurements(client);
-      const loaded = after.filter((m) => !before.has(m.uuid));
-      return { loadedCount: loaded.length, loaded: loaded.map(summarize) };
+      const { created } = await measurementsCreatedBy(client, () =>
+        client.command("/measurements/command", { command: "Load", parameters: args.paths }),
+      );
+      return { loadedCount: created.length, loaded: created.map(summarize) };
     },
   }),
   defineTool({
