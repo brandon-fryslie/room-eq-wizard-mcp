@@ -34,7 +34,7 @@ claude mcp add rew -- npx -y room-eq-wizard-mcp
 
 The REW API address defaults to `http://127.0.0.1:4735`; override with the `REW_API_URL` environment variable if you run REW on another port.
 
-## Tools (29)
+## Tools (34)
 
 | Area | Tools |
 |---|---|
@@ -46,6 +46,7 @@ The REW API address defaults to `http://127.0.0.1:4735`; override with the `REW_
 | SPL meter | `read_spl` |
 | EQ | `auto_eq`, `get_eq_filters`, `set_eq_filters`, `get_predicted_response`, `list_equalisers` |
 | Processing | `average_measurements`, `align_spl`, `arithmetic`, `smooth_measurement`, `add_spl_offset` |
+| Alignment | `align_measurements`, `create_aligned_sum`, `get_alignment_state`, `configure_alignment`, `run_alignment_command` |
 | Analysis | `analyze_response`, `compare_measurements`, `room_mode_analysis` |
 
 Typical session: `status` → `run_sweep` (or `load_measurement_files`) → `analyze_response` → `room_mode_analysis` with your room dimensions → `auto_eq` → `compare_measurements` on the predicted result.

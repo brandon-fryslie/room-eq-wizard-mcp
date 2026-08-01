@@ -10,6 +10,7 @@ import { generatorTools } from "./generator.js";
 import { splTools } from "./spl.js";
 import { eqTools } from "./eq.js";
 import { processTools } from "./process.js";
+import { alignmentTools } from "./alignment.js";
 import { analyzeTools } from "./analyze.js";
 
 export const allTools: ToolDef[] = [
@@ -21,6 +22,7 @@ export const allTools: ToolDef[] = [
   ...splTools,
   ...eqTools,
   ...processTools,
+  ...alignmentTools,
   ...analyzeTools,
 ];
 

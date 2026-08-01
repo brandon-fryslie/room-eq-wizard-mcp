@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { RewClient } from "./client.js";
 import { measurementListSchema, unknownSchema } from "./types.js";
+import { alignmentStateEndpoints } from "../tools/alignment.js";
 
 const baseUrl = process.env.REW_API_URL ?? "http://127.0.0.1:4735";
 const rewIsUp = await fetch(`${baseUrl}/application/commands`, {
@@ -31,6 +32,27 @@ describe.skipIf(!rewIsUp)("live REW", () => {
   it("reports generator status", async () => {
     const status = await client.get("/generator/status", unknownSchema);
     expect(status).toBeTruthy();
+  });
+
+  // The alignment command names shipped in src/tools/alignment.ts were pinned
+  // from reference implementations, never a live REW. This is the check that
+  // reality agrees; if it fails, fix the pinned strings, not this test.
+  it("advertises the pinned alignment tool commands", async () => {
+    const commands = await client.get("/alignment-tool/commands", unknownSchema);
+    const asText = JSON.stringify(commands);
+    expect(asText).toContain("Align phase");
+    expect(asText).toContain("Aligned sum");
+  });
+
+  it("answers every alignment state endpoint", async () => {
+    for (const endpoint of alignmentStateEndpoints) {
+      await expect(
+        client.get(`/alignment-tool/${endpoint}`, unknownSchema),
+        endpoint,
+      ).resolves.toBeDefined();
+    }
+    const modes = await client.get("/alignment-tool/modes", unknownSchema);
+    expect(JSON.stringify(modes)).toContain("Phase");
   });
 });
 

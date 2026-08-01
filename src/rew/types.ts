@@ -120,3 +120,6 @@ export const groupInfoSchema = z.looseObject({
 
 /** For endpoints whose payload we relay verbatim (command lists, errors, process results). */
 export const unknownSchema = z.unknown();
+
+/** Scalar endpoints (e.g. /alignment-tool/delay-b) answer a bare number or its string form. */
+export const wireNumberSchema = z.coerce.number();
