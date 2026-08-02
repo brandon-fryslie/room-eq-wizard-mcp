@@ -36,7 +36,15 @@ export function parseDecaySurface(raw: unknown): DecaySurface {
   const splByTime = timesMs.map((_, t) => {
     const slice = surface[String(t)];
     if (typeof slice !== "string") throw new Error(`decay surface is missing slice ${t}`);
-    return Array.from(decodeFloats(slice));
+    const spl = Array.from(decodeFloats(slice));
+    if (spl.length !== freqsHz.length) {
+      // [LAW:parse-dont-validate] the returned surface is a stamp: rectangular, so
+      // decayTimeMs can index splByTime[t][f] without ever reading undefined.
+      throw new Error(
+        `decay surface slice ${t} has ${spl.length} points but there are ${freqsHz.length} frequencies`,
+      );
+    }
+    return spl;
   });
   return { freqsHz, timesMs, splByTime };
 }

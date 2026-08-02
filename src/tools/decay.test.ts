@@ -59,6 +59,25 @@ describe("generate_waterfall", () => {
       /no decay surface/,
     );
   });
+
+  it("rejects a ragged surface where a slice's length differs from the frequency count", async () => {
+    const ragged = {
+      message: JSON.stringify({
+        results: {
+          "0": {
+            Frequencies: encodeFloats([40, 50, 63]),
+            Times: encodeFloats([0, 100]),
+            "0": encodeFloats([80, 80, 80]),
+            "1": encodeFloats([60, 60]), // one value short
+          },
+        },
+      }),
+    };
+    stubFetch([{}, { body: ragged }]);
+    await expect(invoke("generate_waterfall", new RewClient(), { measurement: "m1" })).rejects.toThrow(
+      /has 2 points but there are 3 frequencies/,
+    );
+  });
 });
 
 describe("generate_spectrogram", () => {
