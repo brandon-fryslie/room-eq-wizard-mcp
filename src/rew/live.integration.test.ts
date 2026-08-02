@@ -233,6 +233,18 @@ describe.skipIf(!rewIsUp)("live REW", () => {
       await inputLevels.handler(client, parse({ action: "stop" })).catch(() => {});
     }
   });
+
+  // room-api-coverage-2p5.4: get_measure_config reads the session settings. Only the
+  // reads are exercised live — the /measure write actions (configure_measurement,
+  // set_measurement_protection, measure_impedance) are Pro-gated (401 without a Pro
+  // licence), so they are mock-verified, matching run_sweep's untested-live status.
+  it("reads the measurement-session config", async () => {
+    const getMeasureConfig = allTools.find((t) => t.name === "get_measure_config");
+    if (getMeasureConfig === undefined) throw new Error("get_measure_config tool missing");
+    const config = (await getMeasureConfig.handler(client, {})) as Record<string, unknown>;
+    expect(config.measurementMode).toBeDefined();
+    expect(config.protectionOptions).toBeDefined();
+  });
 });
 
 if (!rewIsUp) {
