@@ -402,6 +402,15 @@ describe.skipIf(!rewIsUp)("live REW", () => {
     expect(response.source).toBe("all sources summed");
     expect(response.points.length).toBeGreaterThan(0);
   });
+
+  // room-api-coverage-2p5.9: read the stepped-measurement config and progress.
+  // Read-only — starting a stepped measurement plays a stimulus through the outputs.
+  it("reads the stepped-measurement config and progress", async () => {
+    const config = (await tool("get_stepped_config")({})) as { types: unknown; type: unknown };
+    expect(config.types).toBeDefined();
+    expect(config.type).toBeDefined();
+    await expect(tool("get_stepped_progress")({})).resolves.toBeDefined();
+  });
 });
 
 if (!rewIsUp) {
