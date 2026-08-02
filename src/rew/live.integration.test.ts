@@ -314,6 +314,45 @@ describe.skipIf(!rewIsUp)("live REW", () => {
       for (const u of created) await client.delete(`/measurements/${u}`).catch(() => {});
     }
   });
+
+  // room-api-coverage-2p5.6: the IR-derived reads and processes (not Pro-gated). A
+  // Dirac has an impulse response, so it exercises every read; generate_phase_version
+  // creates a measurement. Everything created is deleted afterwards.
+  it("reads IR data and runs an IR process on a measurement", async () => {
+    const tool = (name: string) => {
+      const t = allTools.find((x) => x.name === name);
+      if (t === undefined) throw new Error(`${name} tool missing`);
+      return (a: Record<string, unknown>) => t.handler(client, z.object(t.inputSchema).parse(a));
+    };
+    const before = new Set(
+      Object.values(await client.get("/measurements", measurementListSchema)).map((m) => m.uuid),
+    );
+    const created: string[] = [];
+    try {
+      await client.command("/measurements/command", {
+        command: "Dirac",
+        parameters: ["48000", "65536", "32768"],
+      });
+      const dirac = Object.values(await client.get("/measurements", measurementListSchema))
+        .map((m) => m.uuid)
+        .find((u) => !before.has(u));
+      if (dirac === undefined) throw new Error("Dirac created no measurement");
+      created.push(dirac);
+
+      const ir = (await tool("get_impulse_response")({ measurement: dirac })) as { numSamples: number };
+      expect(ir.numSamples).toBeGreaterThan(0);
+      await expect(tool("get_group_delay")({ measurement: dirac })).resolves.toBeDefined();
+      await expect(tool("ir_windows")({ measurement: dirac })).resolves.toBeDefined();
+
+      const phase = (await tool("generate_phase_version")({ measurement: dirac, kind: "minimum" })) as {
+        measurement: { uuid: string };
+      };
+      created.push(phase.measurement.uuid);
+      expect(phase.measurement.uuid).toBeTruthy();
+    } finally {
+      for (const u of created) await client.delete(`/measurements/${u}`).catch(() => {});
+    }
+  });
 });
 
 if (!rewIsUp) {

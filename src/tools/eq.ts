@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { defineTool, measurementIdInput } from "./registry.js";
 import type { RewClient } from "../rew/client.js";
-import { filterListSchema, spectrumSchema, unknownSchema } from "../rew/types.js";
+import { filterListSchema, impulseResponseSchema, spectrumSchema, unknownSchema } from "../rew/types.js";
 import { decodeFloats } from "../rew/codec.js";
 import { decimateLog, summarizeSpectrum } from "../analysis/spectrum.js";
 import { measurementsCreatedBy, summarize } from "./shared.js";
@@ -25,18 +25,10 @@ async function readOrMergeSettings(
   return client.get(endpoint, unknownSchema);
 }
 
-// The filters impulse response is an ImpulseResponse: metadata plus a base64 sample
-// array. We surface metadata and a peak statistic, never the raw samples — the full
-// array is hundreds of KB, too large for a tool result; the DSP-export flow owns that.
 // When the measurement has no filters with an effect, REW answers { message } instead
-// of an IR, so the two shapes are a discriminated union; the IR shape (with required
-// `data`) is tried first, the sentinel falls through. [LAW:parse-dont-validate]
-const impulseResponseSchema = z.looseObject({
-  startTime: z.number().optional(),
-  sampleInterval: z.number().optional(),
-  sampleRate: z.number().optional(),
-  data: z.string(),
-});
+// of an IR (shared impulseResponseSchema), so the two shapes are a discriminated union;
+// the IR shape (with required `data`) is tried first, the sentinel falls through.
+// [LAW:parse-dont-validate]
 const noIrDataSchema = z.looseObject({ message: z.string() });
 const filtersIrSchema = z.union([impulseResponseSchema, noIrDataSchema]);
 

@@ -80,6 +80,20 @@ export const spectrumSchema = frequencyResponseWireSchema.transform((wire, ctx):
   };
 });
 
+/**
+ * An ImpulseResponse: timing metadata plus a base64 sample array. Tools surface the
+ * metadata and statistics, never the raw samples (hundreds of KB). When a measurement
+ * has no impulse response REW answers { message } instead, so callers pair this with a
+ * message-shape check. [LAW:one-source-of-truth] the IR wire shape lives once here.
+ */
+export const impulseResponseSchema = z.looseObject({
+  startTime: z.number().optional(),
+  sampleInterval: z.number().optional(),
+  sampleRate: z.number().optional(),
+  timingReference: z.string().optional(),
+  data: z.string(),
+});
+
 export const splValuesSchema = z.looseObject({
   meterNumber: z.number().optional(),
   weighting: z.string().optional(),
