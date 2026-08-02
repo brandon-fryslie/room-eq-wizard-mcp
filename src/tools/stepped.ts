@@ -92,16 +92,19 @@ export const steppedTools = [
       imdStimulus: z.string().optional().describe("IMD stimulus specifier (for IMD measurements)"),
     },
     handler: async (client, args) => {
+      // Exactly one stimulus — the one that matches the selected type. Zero is a
+      // missing arg; more than one is ambiguous (REW takes a single stimulus).
+      // [LAW:no-silent-failure] fail clearly here rather than sending a confused body.
+      const stimuli = [args.frequencyHz, args.levelDbfs, args.imdStimulus].filter((v) => v !== undefined);
+      if (stimuli.length !== 1) {
+        throw new Error(
+          "provide exactly one stimulus for Start: frequencyHz (…vs level), levelDbfs (…vs frequency), or imdStimulus (IMD)",
+        );
+      }
       const body: Record<string, unknown> = { command: "Start", settlingTimems: args.settlingTimeMs };
       if (args.frequencyHz !== undefined) body.frequencyHz = args.frequencyHz;
       if (args.levelDbfs !== undefined) body.leveldBFS = args.levelDbfs;
       if (args.imdStimulus !== undefined) body.imdStimulus = args.imdStimulus;
-      if (args.frequencyHz === undefined && args.levelDbfs === undefined && args.imdStimulus === undefined) {
-        // [LAW:no-silent-failure] Start needs a stimulus; REW would 400, but say it clearly.
-        throw new Error(
-          "provide a stimulus for Start: frequencyHz (…vs level), levelDbfs (…vs frequency), or imdStimulus (IMD)",
-        );
-      }
       await client.post("/stepped-measurement/command", body);
       return { started: true, progress: await client.get("/stepped-measurement/progress", unknownSchema) };
     },

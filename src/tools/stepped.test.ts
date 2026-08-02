@@ -39,10 +39,10 @@ describe("get_stepped_config", () => {
 describe("configure_stepped", () => {
   it("posts the type and merges a frequency-span field", async () => {
     const { calls } = stubFetchByPath(configPaths());
-    await invoke("configure_stepped", new RewClient(), {
+    const result = (await invoke("configure_stepped", new RewClient(), {
       type: "THD vs level",
       frequencySpan: { ppo: 6 },
-    });
+    })) as { type: unknown; frequencySpan: unknown };
     expect(bodyAt(calls, "/stepped-measurement/type")).toBe("THD vs level");
     // Merged over current: ppo changed, start/end preserved.
     expect(bodyAt(calls, "/stepped-measurement/frequency-span")).toEqual({
@@ -50,6 +50,9 @@ describe("configure_stepped", () => {
       endFreq: 20000,
       ppo: 6,
     });
+    // The handler returns the read-after-write snapshot (stateless stub → stub bodies).
+    expect(result.type).toBe("THD vs frequency");
+    expect(result.frequencySpan).toEqual({ startFreq: 20, endFreq: 20000, ppo: 3 });
   });
 
   it("rejects a no-op configure", async () => {
@@ -105,7 +108,19 @@ describe("start_stepped_measurement", () => {
     const { calls } = stubFetch([{}]);
     await expect(
       invoke("start_stepped_measurement", new RewClient(), { settlingTimeMs: 100 }),
-    ).rejects.toThrow(/provide a stimulus/);
+    ).rejects.toThrow(/exactly one stimulus/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("rejects Start with more than one stimulus", async () => {
+    const { calls } = stubFetch([{}]);
+    await expect(
+      invoke("start_stepped_measurement", new RewClient(), {
+        settlingTimeMs: 100,
+        frequencyHz: 1000,
+        levelDbfs: -12,
+      }),
+    ).rejects.toThrow(/exactly one stimulus/);
     expect(calls).toHaveLength(0);
   });
 });
