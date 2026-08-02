@@ -259,6 +259,9 @@ describe.skipIf(!rewIsUp)("live REW", () => {
     const uuids = async () =>
       Object.values(await client.get("/measurements", measurementListSchema)).map((m) => m.uuid);
     const before = new Set(await uuids());
+    // Track what we create so cleanup deletes from this list without a fresh GET —
+    // a re-fetch in the finally would throw and skip every delete if REW went away.
+    const created: string[] = [];
     try {
       await client.command("/measurements/command", {
         command: "Dirac",
@@ -266,6 +269,7 @@ describe.skipIf(!rewIsUp)("live REW", () => {
       });
       const dirac = (await uuids()).find((u) => !before.has(u));
       if (dirac === undefined) throw new Error("Dirac created no measurement");
+      created.push(dirac);
 
       // Reads that need no EQ setup.
       await expect(tool("get_target_response")({ measurement: dirac })).resolves.toBeDefined();
@@ -279,6 +283,7 @@ describe.skipIf(!rewIsUp)("live REW", () => {
         command: "Generate filters measurement",
       })) as { created: Array<{ uuid: string }> };
       expect(result.created.length).toBeGreaterThanOrEqual(1);
+      for (const m of result.created) created.push(m.uuid);
 
       // Give the filter bank an effective filter (REW's field is `gaindB`) so the
       // impulse response has something to render — a flat Dirac otherwise has none.
@@ -304,9 +309,9 @@ describe.skipIf(!rewIsUp)("live REW", () => {
       })) as { numSamples: number };
       expect(ir.numSamples).toBe(8192);
     } finally {
-      for (const u of await uuids()) {
-        if (!before.has(u)) await client.delete(`/measurements/${u}`).catch(() => {});
-      }
+      // Delete from the tracked list — no fresh GET, so cleanup runs even if REW's
+      // measurement list is now unreachable. Each delete is best-effort.
+      for (const u of created) await client.delete(`/measurements/${u}`).catch(() => {});
     }
   });
 });

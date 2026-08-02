@@ -111,6 +111,24 @@ describe("eq_match_target_settings", () => {
   });
 });
 
+describe("eq_room_curve_settings", () => {
+  it("reads and merges against the default-room-curve-settings endpoint", async () => {
+    const { calls } = stubFetch([
+      { body: { addRoomCurve: false, lowFreqRiseSlopedBPerOctave: 1.0 } }, // current
+      {}, // POST
+      { body: { addRoomCurve: true, lowFreqRiseSlopedBPerOctave: 1.0 } }, // re-read
+    ]);
+    const result = await invoke("eq_room_curve_settings", new RewClient(), {
+      settings: { addRoomCurve: true },
+    });
+    expect(bodyAt(calls, "POST", "/eq/default-room-curve-settings")).toEqual({
+      addRoomCurve: true,
+      lowFreqRiseSlopedBPerOctave: 1.0,
+    });
+    expect(result).toMatchObject({ addRoomCurve: true });
+  });
+});
+
 describe("run_eq_command", () => {
   it("runs the command and reports created measurements and the filter bank", async () => {
     const { calls } = stubFetch([
