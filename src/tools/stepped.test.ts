@@ -84,6 +84,14 @@ describe("configure_stepped", () => {
     );
     expect(calls).toHaveLength(0);
   });
+
+  it("rejects a configure whose only field is an empty sub-object", async () => {
+    const { calls } = stubFetch([{}]);
+    await expect(
+      invoke("configure_stepped", new RewClient(), { frequencySpan: {} }),
+    ).rejects.toThrow(/at least one stepped-measurement setting/);
+    expect(calls).toHaveLength(0);
+  });
 });
 
 describe("start_stepped_measurement", () => {

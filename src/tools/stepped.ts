@@ -69,8 +69,13 @@ export const steppedTools = [
         .describe('Options, e.g. { "stopAtDistortionLimit": true, "distortionLimitPercent": 1.0 }'),
     },
     handler: async (client, args) => {
-      if (Object.values(args).every((v) => v === undefined)) {
-        // [LAW:no-silent-failure] a no-op configure is a caller mistake, not success.
+      // Count real changes: a defined type, or a sub-object with at least one key.
+      // An empty sub-object (e.g. frequencySpan: {}) writes nothing, so it is a no-op.
+      // [LAW:no-silent-failure] reject it rather than silently doing nothing.
+      const records = [args.frequencySpan, args.levelSpan, args.fftConfiguration, args.options];
+      const hasChange =
+        args.type !== undefined || records.some((r) => r !== undefined && Object.keys(r).length > 0);
+      if (!hasChange) {
         throw new Error("provide at least one stepped-measurement setting to change (see get_stepped_config)");
       }
       if (args.type !== undefined) await client.post("/stepped-measurement/type", args.type);
