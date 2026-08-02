@@ -22,6 +22,7 @@ export function parseDecaySurface(raw: unknown): DecaySurface {
   const surface = results ? Object.values(results)[0] : undefined;
   if (
     surface === undefined ||
+    surface === null ||
     typeof surface["Frequencies"] !== "string" ||
     typeof surface["Times"] !== "string"
   ) {

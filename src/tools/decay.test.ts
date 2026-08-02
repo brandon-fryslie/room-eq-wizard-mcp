@@ -78,6 +78,13 @@ describe("generate_waterfall", () => {
       /has 2 points but there are 3 frequencies/,
     );
   });
+
+  it("fails loudly when a measurement maps to a null surface", async () => {
+    stubFetch([{}, { body: { message: JSON.stringify({ results: { "0": null } }) } }]);
+    await expect(invoke("generate_waterfall", new RewClient(), { measurement: "m1" })).rejects.toThrow(
+      /no decay surface/,
+    );
+  });
 });
 
 describe("generate_spectrogram", () => {
@@ -85,9 +92,18 @@ describe("generate_spectrogram", () => {
     const { calls } = stubFetch([{}, { body: waterfallResult() }]);
     const result = (await invoke("generate_spectrogram", new RewClient(), { measurement: "m1" })) as {
       kind: string;
+      rangeHz: [number, number];
+      sliceCount: number;
+      bands: unknown[];
+      ringingModes: Array<{ hz: number }>;
     };
     const cmd = calls.find((c: FetchCall) => new URL(c.url).pathname === "/measurements/m1/command");
     expect((cmd?.body as { command: string }).command).toBe("Generate spectrogram");
     expect(result.kind).toBe("spectrogram");
+    // Full reduction is produced, same as the waterfall path.
+    expect(result.rangeHz).toEqual([40, 63]);
+    expect(result.sliceCount).toBe(3);
+    expect(result.bands.length).toBeGreaterThan(0);
+    expect(result.ringingModes.map((m) => m.hz)).toContain(50);
   });
 });

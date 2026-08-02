@@ -54,6 +54,11 @@ describe("localMedianDecay", () => {
     const out = localMedianDecay([50, 60, 70, 80, 90], [10, 20, 30, 40, 50], 2);
     expect(out[1]).toBe(30); // median of all five [10,20,30,40,50]
   });
+
+  it("throws on a non-positive window rather than emitting NaN", () => {
+    expect(() => localMedianDecay([50, 60], [10, 20], 0)).toThrow(/must be positive/);
+    expect(() => localMedianDecay([50, 60], [10, 20], -1)).toThrow(/must be positive/);
+  });
 });
 
 describe("detectRingingModes", () => {

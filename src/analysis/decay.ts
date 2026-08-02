@@ -90,6 +90,11 @@ export function localMedianDecay(
   decayMs: ArrayLike<number>,
   windowOctaves: number,
 ): Float64Array {
+  if (!(windowOctaves > 0)) {
+    // [LAW:no-silent-failure] a non-positive window inverts the frequency range so
+    // every window is empty, and an empty median is NaN — reject it, don't emit NaN.
+    throw new Error(`windowOctaves must be positive, got ${windowOctaves}`);
+  }
   const n = freqsHz.length;
   const out = new Float64Array(n);
   const halfRatio = 2 ** (windowOctaves / 2);
