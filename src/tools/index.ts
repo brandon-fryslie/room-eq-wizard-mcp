@@ -17,6 +17,7 @@ import { analyzeTools } from "./analyze.js";
 import { rtaTools } from "./rta.js";
 import { commandTools } from "./commands.js";
 import { audioTools } from "./audio.js";
+import { decayTools } from "./decay.js";
 
 export const allTools: ToolDef[] = [
   ...statusTools,
@@ -34,6 +35,7 @@ export const allTools: ToolDef[] = [
   ...rtaTools,
   ...commandTools,
   ...audioTools,
+  ...decayTools,
 ];
 
 export { registerTools } from "./registry.js";
