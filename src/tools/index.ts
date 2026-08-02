@@ -19,6 +19,7 @@ import { commandTools } from "./commands.js";
 import { audioTools } from "./audio.js";
 import { decayTools } from "./decay.js";
 import { roomsimTools } from "./roomsim.js";
+import { steppedTools } from "./stepped.js";
 
 export const allTools: ToolDef[] = [
   ...statusTools,
@@ -38,6 +39,7 @@ export const allTools: ToolDef[] = [
   ...audioTools,
   ...decayTools,
   ...roomsimTools,
+  ...steppedTools,
 ];
 
 export { registerTools } from "./registry.js";
