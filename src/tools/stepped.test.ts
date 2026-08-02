@@ -76,6 +76,31 @@ describe("start_stepped_measurement", () => {
     expect(result.started).toBe(true);
   });
 
+  it("maps levelDbfs to REW's leveldBFS wire key", async () => {
+    const { calls } = stubFetch([{}, { body: {} }]);
+    await invoke("start_stepped_measurement", new RewClient(), {
+      settlingTimeMs: 100,
+      levelDbfs: -12,
+    });
+    expect(bodyAt(calls, "/stepped-measurement/command")).toEqual({
+      command: "Start",
+      settlingTimems: 100,
+      leveldBFS: -12,
+    });
+  });
+
+  it("passes an IMD stimulus and includes only the provided stimulus key", async () => {
+    const { calls } = stubFetch([{}, { body: {} }]);
+    await invoke("start_stepped_measurement", new RewClient(), {
+      settlingTimeMs: 100,
+      imdStimulus: "SMPTE",
+    });
+    const body = bodyAt(calls, "/stepped-measurement/command") as Record<string, unknown>;
+    expect(body).toEqual({ command: "Start", settlingTimems: 100, imdStimulus: "SMPTE" });
+    expect(body).not.toHaveProperty("frequencyHz");
+    expect(body).not.toHaveProperty("leveldBFS");
+  });
+
   it("rejects Start with no stimulus before any wire call", async () => {
     const { calls } = stubFetch([{}]);
     await expect(
