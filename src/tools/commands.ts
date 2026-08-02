@@ -56,19 +56,24 @@ export const commandTools = [
     },
     handler: async (client, args) => {
       const spec = COMMAND_AREAS[args.area];
+      // A blank measurement counts as absent: measurementIdInput is a bare string, so
+      // "" (or whitespace) would slip past an === undefined check and splice into
+      // "/measurements//eq/command". Normalise first, then guard on presence.
+      const measurement = args.measurement?.trim();
+      const hasMeasurement = measurement !== undefined && measurement.length > 0;
       // [LAW:no-silent-failure] a mismatched measurement/area would otherwise hit the
-      // wrong URL (or splice "undefined" into the path) and fail obscurely. This one
-      // check covers both directions: needed-but-absent, and given-but-not-applicable.
-      if (spec.needsMeasurement === (args.measurement === undefined)) {
+      // wrong URL and fail obscurely. This one check covers both directions:
+      // needed-but-absent, and given-but-not-applicable.
+      if (spec.needsMeasurement !== hasMeasurement) {
         throw new Error(
           spec.needsMeasurement
             ? `area '${args.area}' requires a 'measurement' (UUID or 1-based index)`
             : `area '${args.area}' does not take a 'measurement'`,
         );
       }
-      // The guard guarantees a measurement is present whenever the path carries {m};
+      // The guard guarantees a non-empty measurement whenever the path carries {m};
       // for the other areas {m} is absent so the replacement is a no-op.
-      const endpoint = spec.path.replace("{m}", encodeURIComponent(args.measurement ?? ""));
+      const endpoint = spec.path.replace("{m}", encodeURIComponent(measurement ?? ""));
       const body =
         args.parameters !== undefined
           ? { command: args.command, parameters: args.parameters }

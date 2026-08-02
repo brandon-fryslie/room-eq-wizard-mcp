@@ -62,6 +62,18 @@ describe("run_rew_command", () => {
     expect(calls).toHaveLength(0);
   });
 
+  it("treats a blank measurement as absent for id-based areas", async () => {
+    const { calls } = stubFetch([{}]);
+    await expect(
+      invoke("run_rew_command", new RewClient(), {
+        area: "eq",
+        command: "Match target",
+        measurement: "   ",
+      }),
+    ).rejects.toThrow(/area 'eq' requires a 'measurement'/);
+    expect(calls).toHaveLength(0);
+  });
+
   it("rejects a measurement for non-id areas, before any wire call", async () => {
     const { calls } = stubFetch([{}]);
     await expect(
