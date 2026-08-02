@@ -15,6 +15,7 @@ import { processTools } from "./process.js";
 import { alignmentTools } from "./alignment.js";
 import { analyzeTools } from "./analyze.js";
 import { rtaTools } from "./rta.js";
+import { commandTools } from "./commands.js";
 
 export const allTools: ToolDef[] = [
   ...statusTools,
@@ -30,6 +31,7 @@ export const allTools: ToolDef[] = [
   ...alignmentTools,
   ...analyzeTools,
   ...rtaTools,
+  ...commandTools,
 ];
 
 export { registerTools } from "./registry.js";
