@@ -29,16 +29,24 @@ describe("get_measure_config", () => {
       "/measure/sweep/repetitions": { body: 1 },
       "/measure/timing/reference": { body: "None" },
       "/measure/playback-mode": { body: "From REW" },
+      "/measure/file-playback-stimulus": { body: "" },
       "/measure/capture-noise-floor": { body: true },
       "/measure/start-delay": { body: 0 },
       "/measure/fill-silence-with-dither": { body: false },
       "/measure/invert-second-output": { body: false },
+      "/measure/sequential-channels": { body: { channels: [] } },
+      "/measure/start-level": { body: { value: -60, unit: "dBFS" } },
+      "/measure/end-level": { body: { value: -20, unit: "dBFS" } },
       "/measure/protection-options": { body: { clippingAbort: true } },
     });
     const result = (await invoke("get_measure_config", new RewClient())) as Record<string, unknown>;
     expect(result.measurementMode).toBe("Single");
     expect(result.timingReference).toBe("None");
     expect(result.captureNoiseFloor).toBe(true);
+    // Every field configure_measurement can set is read back (bar timing-offset).
+    expect(result.sequentialChannels).toEqual({ channels: [] });
+    expect(result.startLevel).toEqual({ value: -60, unit: "dBFS" });
+    expect(result.endLevel).toEqual({ value: -20, unit: "dBFS" });
     expect(result.protectionOptions).toEqual({ clippingAbort: true });
   });
 });
@@ -60,6 +68,8 @@ describe("configure_measurement", () => {
     expect(postBody(calls, "/measure/sequential-channels")).toEqual(["L", "R"]);
     expect(postBody(calls, "/measure/start-level")).toEqual({ value: -20, unit: "dBFS" });
     expect(postBody(calls, "/measure/end-level")).toEqual({ value: -6, unit: "dBFS" });
+    // Exactly the six provided fields are written — a dropped/extra setter is caught.
+    expect(calls.filter((c) => c.method === "POST")).toHaveLength(6);
   });
 
   it("rejects a no-op configure before any wire call", async () => {

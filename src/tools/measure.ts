@@ -4,22 +4,28 @@ import type { RewClient } from "../rew/client.js";
 import { unknownSchema } from "../rew/types.js";
 import { measurementsCreatedBy, newestMeasurement, summarize } from "./shared.js";
 
-// One preflight read of the measurement session's settings. timing-offset is
-// omitted: REW 404s it unless a timing reference is selected, and a snapshot must
-// not throw on the common (no-reference) case. [LAW:no-silent-failure]
+// One preflight read of the measurement session's settings — every field
+// configure_measurement can write is read back here, so get_measure_config is a
+// true map of the settable state. The sole exception is timing-offset: REW 404s it
+// unless a timing reference is selected, and a snapshot must not throw on the
+// common (no-reference) case. [LAW:no-silent-failure]
 async function readMeasureConfig(client: RewClient): Promise<Record<string, unknown>> {
   const read = (path: string) => client.get(path, unknownSchema);
-  // Independent reads — fire them together so the preflight is one round-trip, not ten.
+  // Independent reads — fire them together so the preflight is one round-trip, not many.
   const [
     measurementMode,
     numberOfRepetitions,
     sweepRepetitions,
     timingReference,
     playbackMode,
+    filePlaybackStimulus,
     captureNoiseFloor,
     startDelaySeconds,
     fillSilenceWithDither,
     invertSecondOutput,
+    sequentialChannels,
+    startLevel,
+    endLevel,
     protectionOptions,
   ] = await Promise.all([
     read("/measure/measurement-mode"),
@@ -27,10 +33,14 @@ async function readMeasureConfig(client: RewClient): Promise<Record<string, unkn
     read("/measure/sweep/repetitions"),
     read("/measure/timing/reference"),
     read("/measure/playback-mode"),
+    read("/measure/file-playback-stimulus"),
     read("/measure/capture-noise-floor"),
     read("/measure/start-delay"),
     read("/measure/fill-silence-with-dither"),
     read("/measure/invert-second-output"),
+    read("/measure/sequential-channels"),
+    read("/measure/start-level"),
+    read("/measure/end-level"),
     read("/measure/protection-options"),
   ]);
   return {
@@ -39,10 +49,14 @@ async function readMeasureConfig(client: RewClient): Promise<Record<string, unkn
     sweepRepetitions,
     timingReference,
     playbackMode,
+    filePlaybackStimulus,
     captureNoiseFloor,
     startDelaySeconds,
     fillSilenceWithDither,
     invertSecondOutput,
+    sequentialChannels,
+    startLevel,
+    endLevel,
     protectionOptions,
   };
 }
@@ -104,7 +118,7 @@ export const measureTools = [
   defineTool({
     name: "get_measure_config",
     description:
-      "Read REW's measurement-session settings in one call: measurement mode, sweep and per-session repetitions, timing reference, playback mode, noise-floor capture, start delay, dither, second-output inversion, and the protection options (clipping/SPL abort). Check before a serious measurement session.",
+      "Read REW's measurement-session settings in one call: measurement mode, sweep and per-session repetitions, timing reference, playback mode and file stimulus, noise-floor capture, start delay, dither, second-output inversion, sequential channels, ramp start/end levels, and the protection options (clipping/SPL abort). Reflects everything configure_measurement can set (bar the timing offset, which REW only exposes when a reference is selected). Check before a serious measurement session.",
     inputSchema: {},
     handler: async (client) => readMeasureConfig(client),
   }),
