@@ -394,6 +394,26 @@ describe.skipIf(!rewIsUp)("live REW", () => {
       if (dirac !== undefined) await client.delete(`/measurements/${dirac}`).catch(() => {});
     }
   });
+
+  // room-api-coverage-2p5.8: the room simulator needs no measurement — read the
+  // config and the simulated response. Read-only, since the sim config is global
+  // REW state we do not want to mutate net.
+  it("reads the room-sim config and a simulated response", async () => {
+    const tool = (name: string) => {
+      const t = allTools.find((x) => x.name === name);
+      if (t === undefined) throw new Error(`${name} tool missing`);
+      return (a: Record<string, unknown>) => t.handler(client, z.object(t.inputSchema).parse(a));
+    };
+    const config = (await tool("get_roomsim_config")({})) as { roomSize: unknown; sources: unknown };
+    expect(config.roomSize).toBeDefined();
+    expect(config.sources).toBeDefined();
+    const response = (await tool("get_roomsim_response")({ micPosition: "Main" })) as {
+      points: unknown[];
+      source: string;
+    };
+    expect(response.source).toBe("all sources summed");
+    expect(response.points.length).toBeGreaterThan(0);
+  });
 });
 
 if (!rewIsUp) {

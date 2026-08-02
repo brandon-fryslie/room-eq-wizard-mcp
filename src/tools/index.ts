@@ -18,6 +18,7 @@ import { rtaTools } from "./rta.js";
 import { commandTools } from "./commands.js";
 import { audioTools } from "./audio.js";
 import { decayTools } from "./decay.js";
+import { roomsimTools } from "./roomsim.js";
 
 export const allTools: ToolDef[] = [
   ...statusTools,
@@ -36,6 +37,7 @@ export const allTools: ToolDef[] = [
   ...commandTools,
   ...audioTools,
   ...decayTools,
+  ...roomsimTools,
 ];
 
 export { registerTools } from "./registry.js";
