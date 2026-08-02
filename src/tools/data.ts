@@ -2,7 +2,8 @@ import { z } from "zod";
 import { defineTool, measurementIdInput } from "./registry.js";
 import {
   distortionSchema,
-  impulseResponseSchema,
+  impulseResponseOrMessageSchema,
+  noDataMessageSchema,
   rt60Schema,
   spectrumSchema,
   unknownSchema,
@@ -11,9 +12,9 @@ import { decodeFloats } from "../rew/codec.js";
 import { decimateLog, summarizeSpectrum } from "../analysis/spectrum.js";
 import { fetchSpectrum } from "./shared.js";
 
-// IR reads share the "no impulse response → { message }" wire behaviour: the IR shape
-// (required `data`) is tried first, the sentinel falls through. [LAW:parse-dont-validate]
-const irOrMessageSchema = z.union([impulseResponseSchema, z.looseObject({ message: z.string() })]);
+// Group delay, like the IR reads, needs an impulse response — REW answers the no-data
+// sentinel when there is none. The spectrum shape is tried first. [LAW:parse-dont-validate]
+const groupDelayOrMessageSchema = z.union([spectrumSchema, noDataMessageSchema]);
 
 const smoothingInput = z
   .string()
@@ -106,7 +107,7 @@ export const dataTools = [
     handler: async (client, args) => {
       const ir = await client.get(
         `/measurements/${encodeURIComponent(args.measurement)}/impulse-response`,
-        irOrMessageSchema,
+        impulseResponseOrMessageSchema,
         { windowed: args.windowed, normalised: args.normalised },
       );
       if (typeof ir.data !== "string") {
@@ -142,9 +143,17 @@ export const dataTools = [
     handler: async (client, args) => {
       const gd = await client.get(
         `/measurements/${encodeURIComponent(args.measurement)}/group-delay`,
-        spectrumSchema,
+        groupDelayOrMessageSchema,
         { ppo: 96 },
       );
+      if ("message" in gd || gd.freqsHz.length === 0) {
+        // [LAW:no-silent-failure] no IR (the sentinel) or an empty response is a real
+        // state to report, not a NaN frequency range read off an empty array.
+        const reason = "message" in gd ? `REW: "${String(gd.message)}"` : "empty response";
+        throw new Error(
+          `measurement has no group delay (${reason}) — group delay requires an impulse response`,
+        );
+      }
       return {
         unit: gd.unit ?? "seconds",
         rangeHz: [Math.round(gd.freqsHz[0] * 10) / 10, Math.round(gd.freqsHz[gd.freqsHz.length - 1] * 10) / 10],

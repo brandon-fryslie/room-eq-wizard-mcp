@@ -139,7 +139,16 @@ export const processTools = [
         .default("Time align")
         .describe("Alignment method"),
     },
-    handler: (client, args) => runProcess(client, args.method, args.measurements, {}),
+    handler: async (client, args) => {
+      // Not runProcess: these processes modify the measurements' timing in place and
+      // create nothing, so reporting a "newest measurement" would be a stale phantom.
+      const result = await client.command("/measurements/process-measurements", {
+        processName: args.method,
+        measurementUUIDs: args.measurements,
+        parameters: {},
+      });
+      return { processName: args.method, result: result ?? "completed", createdMeasurement: false };
+    },
   }),
   defineTool({
     name: "generate_phase_version",

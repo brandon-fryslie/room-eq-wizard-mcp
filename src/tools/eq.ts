@@ -1,7 +1,12 @@
 import { z } from "zod";
 import { defineTool, measurementIdInput } from "./registry.js";
 import type { RewClient } from "../rew/client.js";
-import { filterListSchema, impulseResponseSchema, spectrumSchema, unknownSchema } from "../rew/types.js";
+import {
+  filterListSchema,
+  impulseResponseOrMessageSchema,
+  spectrumSchema,
+  unknownSchema,
+} from "../rew/types.js";
 import { decodeFloats } from "../rew/codec.js";
 import { decimateLog, summarizeSpectrum } from "../analysis/spectrum.js";
 import { measurementsCreatedBy, summarize } from "./shared.js";
@@ -25,12 +30,8 @@ async function readOrMergeSettings(
   return client.get(endpoint, unknownSchema);
 }
 
-// When the measurement has no filters with an effect, REW answers { message } instead
-// of an IR (shared impulseResponseSchema), so the two shapes are a discriminated union;
-// the IR shape (with required `data`) is tried first, the sentinel falls through.
-// [LAW:parse-dont-validate]
-const noIrDataSchema = z.looseObject({ message: z.string() });
-const filtersIrSchema = z.union([impulseResponseSchema, noIrDataSchema]);
+// When the measurement has no filters with an effect, REW answers the no-data
+// sentinel instead of an IR — the shared impulseResponseOrMessageSchema handles both.
 
 export const eqTools = [
   defineTool({
@@ -278,7 +279,7 @@ export const eqTools = [
     handler: async (client, args) => {
       const ir = await client.get(
         `/measurements/${encodeURIComponent(args.measurement)}/filters-impulse-response`,
-        filtersIrSchema,
+        impulseResponseOrMessageSchema,
         { samplerate: args.sampleRate, length: args.length },
       );
       if (typeof ir.data !== "string") {

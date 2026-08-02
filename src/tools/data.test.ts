@@ -55,6 +55,13 @@ describe("get_group_delay", () => {
     expect(result.unit).toBe("seconds");
     expect(result.points).toHaveLength(3);
   });
+
+  it("reports the no-IR sentinel instead of a NaN range", async () => {
+    stubFetch([{ body: { message: "Measurement does not have an impulse response" } }]);
+    await expect(invoke("get_group_delay", new RewClient(), { measurement: "m1" })).rejects.toThrow(
+      /no group delay/,
+    );
+  });
 });
 
 describe("ir_windows", () => {

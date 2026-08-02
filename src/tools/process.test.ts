@@ -99,4 +99,16 @@ describe("generate_phase_version", () => {
       "Excess phase version",
     );
   });
+
+  it("fails loudly when the command produces no measurement", async () => {
+    stubFetch([
+      { body: { "1": { uuid: "m1" } } }, // before
+      {}, // blocking
+      {}, // command
+      { body: { "1": { uuid: "m1" } } }, // after — unchanged
+    ]);
+    await expect(
+      invoke("generate_phase_version", new RewClient(), { measurement: "m1" }),
+    ).rejects.toThrow(/produced no measurement/);
+  });
 });
