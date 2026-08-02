@@ -135,7 +135,10 @@ export function detectRingingModes(
   const { windowOctaves = 1, minExcessMs = 50, maxCount = 12 } = options;
   const freqsHz = surface.freqsHz;
   const n = freqsHz.length;
-  if (n < 3) return [];
+  // Need at least three frequencies to have an interior local maximum, and at least
+  // two time slices for decayTimeMs to bracket a decay. [LAW:no-defensive-null-guards]
+  // the guard reflects the real precondition rather than papering over an empty surface.
+  if (n < 3 || surface.timesMs.length < 2) return [];
   const decay = new Float64Array(n);
   for (let i = 0; i < n; i++) decay[i] = decayTimeMs(surface, i, dropDb);
   const baseline = localMedianDecay(freqsHz, decay, windowOctaves);

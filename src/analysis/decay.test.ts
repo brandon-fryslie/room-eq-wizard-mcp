@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   decayTimeMs,
   detectRingingModes,
+  localMedianDecay,
   summarizeDecay,
   type DecaySurface,
 } from "./decay.js";
@@ -36,7 +37,32 @@ describe("decayTimeMs", () => {
   });
 });
 
+describe("localMedianDecay", () => {
+  it("takes the median of decays within the ±window/2-octave window at each point", () => {
+    // window ±0.25 octave (2^0.25 ≈ 1.189).
+    const out = localMedianDecay([50, 60, 70, 80, 90], [10, 10, 100, 10, 10], 0.5);
+    // 70 Hz window [58.9, 83.2] → {60,70,80} decays [10,100,10] → median 10.
+    expect(out[2]).toBe(10);
+    // 60 Hz window [50.5, 71.3] → {60,70} decays [10,100] → even-length median 55.
+    expect(out[1]).toBe(55);
+    // 50 Hz window [42.1, 59.4] → {50} only (boundary) → median 10.
+    expect(out[0]).toBe(10);
+  });
+
+  it("widens the window with windowOctaves", () => {
+    // A 2-octave window around 60 Hz spans 30–120 Hz → all five points.
+    const out = localMedianDecay([50, 60, 70, 80, 90], [10, 20, 30, 40, 50], 2);
+    expect(out[1]).toBe(30); // median of all five [10,20,30,40,50]
+  });
+});
+
 describe("detectRingingModes", () => {
+  it("returns nothing for a surface with fewer than two time slices", () => {
+    expect(detectRingingModes({ freqsHz: [40, 50, 63], timesMs: [0], splByTime: [[80, 80, 80]] }, 20)).toEqual(
+      [],
+    );
+  });
+
   it("flags the frequency that decays slower than its neighbours, and not the rest", () => {
     const s = surface(freqsHz, timesMs, decayByFreq);
     const modes = detectRingingModes(s, 20, { minExcessMs: 50 });
