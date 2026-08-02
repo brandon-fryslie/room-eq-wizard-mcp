@@ -353,6 +353,47 @@ describe.skipIf(!rewIsUp)("live REW", () => {
       for (const u of created) await client.delete(`/measurements/${u}`).catch(() => {});
     }
   });
+
+  // room-api-coverage-2p5.7: waterfall + spectrogram reduce to findings. This also
+  // confirms the spectrogram result uses the same Frequencies/Times/slices surface
+  // shape the waterfall does (the tool parses both the same way).
+  it("generates a waterfall and spectrogram and returns reduced decay findings", async () => {
+    const tool = (name: string) => {
+      const t = allTools.find((x) => x.name === name);
+      if (t === undefined) throw new Error(`${name} tool missing`);
+      return (a: Record<string, unknown>) => t.handler(client, z.object(t.inputSchema).parse(a));
+    };
+    const before = new Set(
+      Object.values(await client.get("/measurements", measurementListSchema)).map((m) => m.uuid),
+    );
+    let dirac: string | undefined;
+    try {
+      await client.command("/measurements/command", {
+        command: "Dirac",
+        parameters: ["48000", "65536", "32768"],
+      });
+      dirac = Object.values(await client.get("/measurements", measurementListSchema))
+        .map((m) => m.uuid)
+        .find((u) => !before.has(u));
+      if (dirac === undefined) throw new Error("Dirac created no measurement");
+
+      const wf = (await tool("generate_waterfall")({ measurement: dirac, slices: 20 })) as {
+        kind: string;
+        bands: unknown[];
+        sliceCount: number;
+      };
+      expect(wf.kind).toBe("waterfall");
+      expect(wf.bands.length).toBeGreaterThan(0);
+      expect(wf.sliceCount).toBe(20);
+
+      const sg = (await tool("generate_spectrogram")({ measurement: dirac, slices: 20 })) as {
+        kind: string;
+      };
+      expect(sg.kind).toBe("spectrogram");
+    } finally {
+      if (dirac !== undefined) await client.delete(`/measurements/${dirac}`).catch(() => {});
+    }
+  });
 });
 
 if (!rewIsUp) {
