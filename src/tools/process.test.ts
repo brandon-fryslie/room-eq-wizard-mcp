@@ -48,9 +48,9 @@ describe("arithmetic", () => {
 });
 
 describe("align_ir", () => {
-  it("runs the chosen IR-align process over the measurements", async () => {
-    const { calls } = stubFetch([{}, { body: "ok" }, { body: {} }]);
-    await invoke("align_ir", new RewClient(), {
+  it("runs the chosen IR-align process, and creates no measurement (2 calls)", async () => {
+    const { calls } = stubFetch([{}, { body: "ok" }]); // blocking + process only
+    const result = await invoke("align_ir", new RewClient(), {
       measurements: ["a", "b"],
       method: "Cross corr align",
     });
@@ -58,6 +58,9 @@ describe("align_ir", () => {
       processName: "Cross corr align",
       measurementUUIDs: ["a", "b"],
     });
+    // No measurement-list fetch — it modifies in place, so exactly two calls.
+    expect(calls).toHaveLength(2);
+    expect(result).toMatchObject({ createdMeasurement: false });
   });
 });
 

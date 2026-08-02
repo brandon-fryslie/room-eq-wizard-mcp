@@ -62,6 +62,14 @@ describe("get_group_delay", () => {
       /no group delay/,
     );
   });
+
+  it("throws on an empty (zero-point) response rather than a NaN range", async () => {
+    // A valid spectrum wire shape whose magnitude decodes to zero points.
+    stubFetch([{ body: { startFreq: 20, ppo: 6, magnitude: encodeFloats([]) } }]);
+    await expect(invoke("get_group_delay", new RewClient(), { measurement: "m1" })).rejects.toThrow(
+      /empty response/,
+    );
+  });
 });
 
 describe("ir_windows", () => {

@@ -10,7 +10,7 @@ import {
 } from "../rew/types.js";
 import { decodeFloats } from "../rew/codec.js";
 import { decimateLog, summarizeSpectrum } from "../analysis/spectrum.js";
-import { fetchSpectrum } from "./shared.js";
+import { fetchSpectrum, readMergeWriteSettings } from "./shared.js";
 
 // Group delay, like the IR reads, needs an impulse response — REW answers the no-data
 // sentinel when there is none. The spectrum shape is tried first. [LAW:parse-dont-validate]
@@ -174,12 +174,8 @@ export const dataTools = [
     },
     handler: async (client, args) => {
       const endpoint = `/measurements/${encodeURIComponent(args.measurement)}/ir-windows`;
-      if (args.settings !== undefined && Object.keys(args.settings).length > 0) {
-        // Merge over current so unspecified window fields are preserved; PUT is the write verb.
-        const current = await client.get(endpoint, z.looseObject({}));
-        await client.put(endpoint, { ...current, ...args.settings });
-      }
-      return client.get(endpoint, unknownSchema);
+      // Same read-merge-write as the EQ settings tools; ir-windows uses PUT.
+      return readMergeWriteSettings(client, endpoint, args.settings, "put");
     },
   }),
 ];

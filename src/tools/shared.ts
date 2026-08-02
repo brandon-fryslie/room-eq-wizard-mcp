@@ -1,14 +1,38 @@
 // Shared REW fetch recipes used by multiple tools — each exists so the
 // endpoint + schema pairing lives in exactly one place. [LAW:one-source-of-truth]
 
+import { z } from "zod";
 import type { RewClient } from "../rew/client.js";
 import {
   measurementListSchema,
   spectrumSchema,
   toIndexedList,
+  unknownSchema,
   type IndexedMeasurement,
   type Spectrum,
 } from "../rew/types.js";
+
+/**
+ * Read-merge-write for REW's single-object settings endpoints (EQ match/room-curve
+ * settings, IR windows): to change one field REW wants the whole object, so read it,
+ * merge the provided fields, write, and return the fresh state. With no fields it is
+ * a plain read. The write verb differs by endpoint (POST vs PUT). [LAW:single-enforcer]
+ * the merge strategy lives once here; callers supply only the endpoint and verb.
+ */
+export async function readMergeWriteSettings(
+  client: RewClient,
+  endpoint: string,
+  settings: Record<string, unknown> | undefined,
+  verb: "post" | "put" = "post",
+): Promise<unknown> {
+  if (settings !== undefined && Object.keys(settings).length > 0) {
+    // Read as an object so the spread is sound — z.looseObject throws on a non-object
+    // rather than a cast silently spreading garbage. [LAW:parse-dont-validate]
+    const current = await client.get(endpoint, z.looseObject({}));
+    await client[verb](endpoint, { ...current, ...settings });
+  }
+  return client.get(endpoint, unknownSchema);
+}
 
 export interface SpectrumQuery {
   smoothing?: string;
