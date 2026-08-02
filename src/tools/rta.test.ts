@@ -116,9 +116,43 @@ describe("get_rta_capture", () => {
     await expect(invoke("get_rta_capture", new RewClient())).rejects.toThrow(/There is no data/);
   });
 
+  it("parses a real spectrum that carries a stray message field as a spectrum, not no-data", async () => {
+    // Regression: the no-data sentinel is a loose object, so union order must put
+    // the spectrum schema first — otherwise a capture with an extra 'message' field
+    // would be misclassified as no-data and throw.
+    stubFetch([
+      { body: { startFreq: 0, freqStep: 10, magnitude: encodeFloats([1, 2, 3]), message: "ok" } },
+    ]);
+    const result = (await invoke("get_rta_capture", new RewClient())) as { capture: string };
+    expect(result.capture).toBe("rms");
+  });
+
   it("fails loudly when the capture holds nothing but the 0 Hz bin", async () => {
     stubFetch([{ body: { startFreq: 0, freqStep: 10, magnitude: encodeFloats([1]) } }]);
     await expect(invoke("get_rta_capture", new RewClient())).rejects.toThrow(/no captured data/);
+  });
+});
+
+describe("configure_rta", () => {
+  it("rejects empty settings before touching the wire", async () => {
+    const { calls } = stubFetch([{}]);
+    await expect(invoke("configure_rta", new RewClient(), { settings: {} })).rejects.toThrow(
+      /at least one RTA setting/,
+    );
+    expect(calls).toHaveLength(0);
+  });
+
+  it("posts the partial settings and returns the re-read configuration", async () => {
+    const config = { mode: "1/12 octave", fftLength: "64k", window: "Hann" };
+    const { calls } = stubFetch([{}, { body: config }]);
+    const result = await invoke("configure_rta", new RewClient(), {
+      settings: { mode: "1/12 octave" },
+    });
+    expect(wire(calls)).toEqual([
+      ["POST", "/rta/configuration", { mode: "1/12 octave" }],
+      ["GET", "/rta/configuration", undefined],
+    ]);
+    expect(result).toEqual(config);
   });
 });
 

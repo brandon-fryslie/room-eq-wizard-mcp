@@ -152,19 +152,25 @@ describe.skipIf(!rewIsUp)("live REW", () => {
   });
 
   // configure_rta posts a partial config; confirm REW merges it (leaves the other
-  // fields intact) rather than replacing the whole object — a round-trip that sets
-  // a field to its own current value, so the suite mutates nothing net.
+  // fields intact) rather than replacing the whole object. Round-trip whichever
+  // scalar field is actually present to its own value — so the suite mutates
+  // nothing net and assumes no particular field exists — then assert the entire
+  // config is unchanged: a merge preserves every untouched field, a replace would
+  // drop them.
   it("applies a partial RTA configuration without disturbing other fields", async () => {
     const before = (await client.get("/rta/configuration", unknownSchema)) as Record<string, unknown>;
+    const scalar = Object.entries(before).find(
+      ([, v]) => typeof v === "string" || typeof v === "number" || typeof v === "boolean",
+    );
+    if (scalar === undefined) throw new Error("no scalar RTA config field to round-trip");
+    const [field, value] = scalar;
     const configureRta = allTools.find((t) => t.name === "configure_rta");
     if (configureRta === undefined) throw new Error("configure_rta tool missing");
     const after = (await configureRta.handler(
       client,
-      z.object(configureRta.inputSchema).parse({ settings: { window: before.window } }),
+      z.object(configureRta.inputSchema).parse({ settings: { [field]: value } }),
     )) as Record<string, unknown>;
-    expect(after.window).toBe(before.window);
-    // fftLength was not in our partial — a merge leaves it, a replace would drop it.
-    expect(after.fftLength).toBe(before.fftLength);
+    expect(after).toEqual(before);
   });
 });
 

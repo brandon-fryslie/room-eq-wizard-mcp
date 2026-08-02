@@ -46,8 +46,13 @@ export const rtaSpectrumSchema = spectrumSchema.transform(positiveFrequenciesOnl
 // wire shapes as the discriminated union they are, so the no-data case becomes a
 // clear, actionable error rather than a cryptic "startFreq required" Zod failure.
 // [LAW:parse-dont-validate] the boundary decides which shape arrived, once.
+//
+// Order matters: the spectrum schema is tried first because noCaptureDataSchema is
+// a loose object that would also match a real spectrum carrying a stray `message`
+// field. A genuine capture always has startFreq+magnitude and matches the spectrum
+// schema; the no-data payload lacks startFreq and falls through to the sentinel.
 const noCaptureDataSchema = z.looseObject({ message: z.string() });
-const rtaCaptureSchema = z.union([noCaptureDataSchema, rtaSpectrumSchema]);
+const rtaCaptureSchema = z.union([rtaSpectrumSchema, noCaptureDataSchema]);
 
 async function fetchCapture(
   client: RewClient,
