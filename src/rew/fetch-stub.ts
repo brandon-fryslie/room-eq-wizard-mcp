@@ -6,12 +6,18 @@ import { vi } from "vitest";
 
 export type FetchCall = { url: string; method: string; body: unknown };
 
-/** Install a fetch stub that records calls and replays canned responses in order. */
-export function stubFetch(
-  responses: Array<{ status?: number; body?: unknown }>,
+type CannedResponse = { status?: number; body?: unknown };
+
+/**
+ * The one recording-fetch installer. Both public stubs differ only in how they
+ * pick the canned response for a request; the call recording and Response
+ * construction live here once. [LAW:one-source-of-truth] `resolve` returning
+ * undefined means "no canned response" and answers 404.
+ */
+function installRecordingFetch(
+  resolve: (path: string, callIndex: number) => CannedResponse | undefined,
 ): { calls: FetchCall[] } {
   const calls: FetchCall[] = [];
-  let index = 0;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: URL | string, init?: RequestInit) => {
@@ -20,15 +26,22 @@ export function stubFetch(
         method: init?.method ?? "GET",
         body: typeof init?.body === "string" ? JSON.parse(init.body) : undefined,
       });
-      const next = responses[Math.min(index++, responses.length - 1)];
-      const status = next.status ?? 200;
-      return new Response(next.body !== undefined ? JSON.stringify(next.body) : "", {
+      const next = resolve(new URL(String(url)).pathname, calls.length - 1);
+      const status = next?.status ?? (next === undefined ? 404 : 200);
+      return new Response(next?.body !== undefined ? JSON.stringify(next.body) : "", {
         status,
         statusText: String(status),
       });
     }),
   );
   return { calls };
+}
+
+/** Install a fetch stub that records calls and replays canned responses in order. */
+export function stubFetch(responses: CannedResponse[]): { calls: FetchCall[] } {
+  // Past the end, the last response repeats — so a handler making N calls needs
+  // only its distinct responses listed.
+  return installRecordingFetch((_, index) => responses[Math.min(index, responses.length - 1)]);
 }
 
 /**
@@ -38,27 +51,7 @@ export function stubFetch(
  * unmapped path answers 404 so a missed endpoint fails loudly rather than silently.
  */
 export function stubFetchByPath(
-  byPath: Record<string, { status?: number; body?: unknown }>,
+  byPath: Record<string, CannedResponse>,
 ): { calls: FetchCall[] } {
-  const calls: FetchCall[] = [];
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async (url: URL | string, init?: RequestInit) => {
-      calls.push({
-        url: String(url),
-        method: init?.method ?? "GET",
-        body: typeof init?.body === "string" ? JSON.parse(init.body) : undefined,
-      });
-      const next = byPath[new URL(String(url)).pathname];
-      if (next === undefined) {
-        return new Response("", { status: 404, statusText: "404" });
-      }
-      const status = next.status ?? 200;
-      return new Response(next.body !== undefined ? JSON.stringify(next.body) : "", {
-        status,
-        statusText: String(status),
-      });
-    }),
-  );
-  return { calls };
+  return installRecordingFetch((path) => byPath[path]);
 }
