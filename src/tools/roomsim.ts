@@ -55,8 +55,9 @@ export const roomsimTools = [
       const dims = { lengthM: "length", widthM: "width", heightM: "height" } as const;
       const dimChanges = Object.entries(dims).filter(([k]) => args[k as keyof typeof dims] !== undefined);
       if (dimChanges.length > 0) {
-        const current = (await client.get("/roomsim/room-size", unknownSchema)) as Record<string, unknown>;
-        const next = { ...current };
+        // z.looseObject throws on a non-object, so the dim merge can't spread garbage.
+        const current = await client.get("/roomsim/room-size", z.looseObject({}));
+        const next: Record<string, unknown> = { ...current };
         for (const [argKey, wireKey] of dimChanges) next[wireKey] = args[argKey as keyof typeof dims];
         await client.post("/roomsim/room-size", next);
       }
@@ -82,7 +83,7 @@ export const roomsimTools = [
     description:
       "Position and configure one simulation source (a speaker or sub, e.g. 'Sub1', 'Left'; see get_roomsim_config's source list / /roomsim/source-names). Set its position (fromRear/fromLeft/fromFloor, metres) and/or configuration (lfMinus3dBHz, enclosureType, invert, delayms, gaindB). Returns the source's resulting position and configuration.",
     inputSchema: {
-      source: z.string().describe("Source name, e.g. 'Sub1', 'Left', 'Right'"),
+      source: z.string().min(1).describe("Source name, e.g. 'Sub1', 'Left', 'Right'"),
       position: settingsRecord
         .optional()
         .describe('Position fields to change, e.g. { "fromRear": 4.7, "fromLeft": 0.15, "fromFloor": 0.15 }'),
@@ -116,6 +117,7 @@ export const roomsimTools = [
     inputSchema: {
       source: z
         .string()
+        .min(1)
         .optional()
         .describe("A single source to read alone; omit for all sources summed"),
       micPosition: z

@@ -85,7 +85,7 @@ describe("set_roomsim_source", () => {
     const result = (await invoke("set_roomsim_source", new RewClient(), {
       source: "Sub1",
       position: { fromLeft: 1.0 },
-    })) as { source: string };
+    })) as { source: string; position: unknown; configuration: unknown };
     expect(postBody(calls, "/roomsim/Sub1/position")).toEqual({
       unit: "metres",
       fromRear: 4.7,
@@ -93,6 +93,18 @@ describe("set_roomsim_source", () => {
       fromFloor: 0.15,
     });
     expect(result.source).toBe("Sub1");
+    // The result reflects the re-read of both sub-resources (stateless stub → the
+    // stub bodies), proving the handler returns the re-GET, not stale/ad-hoc data.
+    expect(result.position).toEqual({ unit: "metres", fromRear: 4.7, fromLeft: 0.15, fromFloor: 0.15 });
+    expect(result.configuration).toEqual({ enclosureType: "Ported" });
+  });
+
+  it("rejects an empty source name", async () => {
+    const { calls } = stubFetch([{}]);
+    await expect(
+      invoke("set_roomsim_source", new RewClient(), { source: "", position: { fromLeft: 1 } }),
+    ).rejects.toThrow();
+    expect(calls).toHaveLength(0);
   });
 
   it("rejects a source change with nothing to set", async () => {
