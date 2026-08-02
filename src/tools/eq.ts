@@ -1,44 +1,17 @@
 import { z } from "zod";
 import { defineTool, measurementIdInput } from "./registry.js";
-import type { RewClient } from "../rew/client.js";
-import { filterListSchema, spectrumSchema, unknownSchema } from "../rew/types.js";
+import {
+  filterListSchema,
+  impulseResponseOrMessageSchema,
+  spectrumSchema,
+  unknownSchema,
+} from "../rew/types.js";
 import { decodeFloats } from "../rew/codec.js";
 import { decimateLog, summarizeSpectrum } from "../analysis/spectrum.js";
-import { measurementsCreatedBy, summarize } from "./shared.js";
+import { measurementsCreatedBy, readMergeWriteSettings, summarize } from "./shared.js";
 
-// The EQ settings endpoints (match-target-settings, default-room-curve-settings)
-// are single objects: to change one field REW wants the whole object back, so read,
-// merge the provided fields, write, and return the fresh state. With no fields this
-// is a plain read. [LAW:one-source-of-truth] the read-merge-write lives once here.
-async function readOrMergeSettings(
-  client: RewClient,
-  endpoint: string,
-  settings: Record<string, unknown> | undefined,
-): Promise<unknown> {
-  if (settings !== undefined && Object.keys(settings).length > 0) {
-    // Read as an object so the merge spread is sound: z.looseObject stamps the
-    // response as a real object and throws on null/string/array, rather than a
-    // cast that would silently spread a non-object into garbage. [LAW:parse-dont-validate]
-    const current = await client.get(endpoint, z.looseObject({}));
-    await client.post(endpoint, { ...current, ...settings });
-  }
-  return client.get(endpoint, unknownSchema);
-}
-
-// The filters impulse response is an ImpulseResponse: metadata plus a base64 sample
-// array. We surface metadata and a peak statistic, never the raw samples — the full
-// array is hundreds of KB, too large for a tool result; the DSP-export flow owns that.
-// When the measurement has no filters with an effect, REW answers { message } instead
-// of an IR, so the two shapes are a discriminated union; the IR shape (with required
-// `data`) is tried first, the sentinel falls through. [LAW:parse-dont-validate]
-const impulseResponseSchema = z.looseObject({
-  startTime: z.number().optional(),
-  sampleInterval: z.number().optional(),
-  sampleRate: z.number().optional(),
-  data: z.string(),
-});
-const noIrDataSchema = z.looseObject({ message: z.string() });
-const filtersIrSchema = z.union([impulseResponseSchema, noIrDataSchema]);
+// When the measurement has no filters with an effect, REW answers the no-data
+// sentinel instead of an IR — the shared impulseResponseOrMessageSchema handles both.
 
 export const eqTools = [
   defineTool({
@@ -222,7 +195,7 @@ export const eqTools = [
         .optional()
         .describe('Fields to change, e.g. { "individualMaxBoostdB": 6, "overallMaxBoostdB": 0 }'),
     },
-    handler: async (client, args) => readOrMergeSettings(client, "/eq/match-target-settings", args.settings),
+    handler: async (client, args) => readMergeWriteSettings(client, "/eq/match-target-settings", args.settings),
   }),
   defineTool({
     name: "eq_room_curve_settings",
@@ -235,7 +208,7 @@ export const eqTools = [
         .describe('Fields to change, e.g. { "addRoomCurve": true, "lowFreqRiseSlopedBPerOctave": 1.0 }'),
     },
     handler: async (client, args) =>
-      readOrMergeSettings(client, "/eq/default-room-curve-settings", args.settings),
+      readMergeWriteSettings(client, "/eq/default-room-curve-settings", args.settings),
   }),
   defineTool({
     name: "run_eq_command",
@@ -286,7 +259,7 @@ export const eqTools = [
     handler: async (client, args) => {
       const ir = await client.get(
         `/measurements/${encodeURIComponent(args.measurement)}/filters-impulse-response`,
-        filtersIrSchema,
+        impulseResponseOrMessageSchema,
         { samplerate: args.sampleRate, length: args.length },
       );
       if (typeof ir.data !== "string") {
