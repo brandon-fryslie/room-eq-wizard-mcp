@@ -200,6 +200,22 @@ describe("save_rta_capture", () => {
     });
   });
 
+  it("maps which=peak to REW's 'Save peak' command", async () => {
+    const { calls } = stubFetch([
+      { body: {} }, // before
+      {}, // blocking
+      {}, // command
+      { body: { "1": { uuid: "peak-1" } } }, // after
+    ]);
+    const result = (await invoke("save_rta_capture", new RewClient(), { which: "peak" })) as {
+      savedCount: number;
+    };
+    expect(calls.find((c) => new URL(c.url).pathname === "/rta/command")?.body).toEqual({
+      command: "Save peak",
+    });
+    expect(result.savedCount).toBe(1);
+  });
+
   it("maps which=both to REW's 'Save both' and reports every measurement created", async () => {
     const { calls } = stubFetch([
       { body: {} }, // before
