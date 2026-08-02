@@ -16,7 +16,10 @@ async function readOrMergeSettings(
   settings: Record<string, unknown> | undefined,
 ): Promise<unknown> {
   if (settings !== undefined && Object.keys(settings).length > 0) {
-    const current = (await client.get(endpoint, unknownSchema)) as Record<string, unknown>;
+    // Read as an object so the merge spread is sound: z.looseObject stamps the
+    // response as a real object and throws on null/string/array, rather than a
+    // cast that would silently spread a non-object into garbage. [LAW:parse-dont-validate]
+    const current = await client.get(endpoint, z.looseObject({}));
     await client.post(endpoint, { ...current, ...settings });
   }
   return client.get(endpoint, unknownSchema);

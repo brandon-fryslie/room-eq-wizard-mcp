@@ -83,6 +83,13 @@ describe("eq_match_target_settings", () => {
       overallMaxBoostdB: 0,
     });
   });
+
+  it("fails loudly if the current settings response is not an object", async () => {
+    stubFetch([{ body: null }]); // REW returns a non-object where a settings object is expected
+    await expect(
+      invoke("eq_match_target_settings", new RewClient(), { settings: { individualMaxBoostdB: 6 } }),
+    ).rejects.toThrow();
+  });
 });
 
 describe("run_eq_command", () => {
