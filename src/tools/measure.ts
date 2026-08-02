@@ -9,17 +9,41 @@ import { measurementsCreatedBy, newestMeasurement, summarize } from "./shared.js
 // not throw on the common (no-reference) case. [LAW:no-silent-failure]
 async function readMeasureConfig(client: RewClient): Promise<Record<string, unknown>> {
   const read = (path: string) => client.get(path, unknownSchema);
+  // Independent reads — fire them together so the preflight is one round-trip, not ten.
+  const [
+    measurementMode,
+    numberOfRepetitions,
+    sweepRepetitions,
+    timingReference,
+    playbackMode,
+    captureNoiseFloor,
+    startDelaySeconds,
+    fillSilenceWithDither,
+    invertSecondOutput,
+    protectionOptions,
+  ] = await Promise.all([
+    read("/measure/measurement-mode"),
+    read("/measure/number-of-repetitions"),
+    read("/measure/sweep/repetitions"),
+    read("/measure/timing/reference"),
+    read("/measure/playback-mode"),
+    read("/measure/capture-noise-floor"),
+    read("/measure/start-delay"),
+    read("/measure/fill-silence-with-dither"),
+    read("/measure/invert-second-output"),
+    read("/measure/protection-options"),
+  ]);
   return {
-    measurementMode: await read("/measure/measurement-mode"),
-    numberOfRepetitions: await read("/measure/number-of-repetitions"),
-    sweepRepetitions: await read("/measure/sweep/repetitions"),
-    timingReference: await read("/measure/timing/reference"),
-    playbackMode: await read("/measure/playback-mode"),
-    captureNoiseFloor: await read("/measure/capture-noise-floor"),
-    startDelaySeconds: await read("/measure/start-delay"),
-    fillSilenceWithDither: await read("/measure/fill-silence-with-dither"),
-    invertSecondOutput: await read("/measure/invert-second-output"),
-    protectionOptions: await read("/measure/protection-options"),
+    measurementMode,
+    numberOfRepetitions,
+    sweepRepetitions,
+    timingReference,
+    playbackMode,
+    captureNoiseFloor,
+    startDelaySeconds,
+    fillSilenceWithDither,
+    invertSecondOutput,
+    protectionOptions,
   };
 }
 
