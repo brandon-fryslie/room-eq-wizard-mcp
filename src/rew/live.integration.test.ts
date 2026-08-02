@@ -11,6 +11,7 @@ import { z } from "zod";
 import { RewClient } from "./client.js";
 import { groupListSchema, groupMeasurementsSchema, measurementListSchema, unknownSchema } from "./types.js";
 import { alignmentStateEndpoints } from "../tools/alignment.js";
+import { RTA_CONTROL_COMMANDS, RTA_SAVE_COMMANDS } from "../tools/rta.js";
 import { allTools } from "../tools/index.js";
 
 const baseUrl = process.env.REW_API_URL ?? "http://127.0.0.1:4735";
@@ -135,6 +136,48 @@ describe.skipIf(!rewIsUp)("live REW", () => {
       if (measurementUuid !== undefined) await client.delete(`/measurements/${measurementUuid}`);
       await rm(dir, { recursive: true, force: true });
     }
+  });
+
+  // room-api-coverage-2p5.1: the RTA command names in src/tools/rta.ts were pinned
+  // against this live /rta/commands list (Start/Stop/Reset averaging for control_rta,
+  // Save current/peak/both for save_rta_capture). This is the check that reality
+  // still agrees; if it fails, fix the pinned strings, not this test.
+  it("advertises the pinned RTA commands and answers its state endpoints", async () => {
+    const commands = await client.get("/rta/commands", unknownSchema);
+    const asText = JSON.stringify(commands);
+    // Derived from the tool's own constants — the single source of the strings, so
+    // adding a command there automatically extends this reality check.
+    for (const command of [...Object.values(RTA_CONTROL_COMMANDS), ...Object.values(RTA_SAVE_COMMANDS)]) {
+      expect(asText, command).toContain(command);
+    }
+    await expect(client.get("/rta/status", unknownSchema)).resolves.toBeDefined();
+    await expect(client.get("/rta/configuration", unknownSchema)).resolves.toBeDefined();
+  });
+
+  // configure_rta posts a partial config; confirm REW merges it (leaves the other
+  // fields intact) rather than replacing the whole object. Round-trip whichever
+  // scalar field is actually present to its own value — so the suite mutates
+  // nothing net and assumes no particular field exists — then assert the entire
+  // config is unchanged: a merge preserves every untouched field, a replace would
+  // drop them.
+  it("applies a partial RTA configuration without disturbing other fields", async () => {
+    const before = (await client.get("/rta/configuration", unknownSchema)) as Record<string, unknown>;
+    // Guard before Object.entries: a null/non-object response should fail as a
+    // clear assertion, not a TypeError. (typeof null === "object", so check truthy too.)
+    expect(before).toBeTruthy();
+    expect(typeof before).toBe("object");
+    const scalar = Object.entries(before).find(
+      ([, v]) => typeof v === "string" || typeof v === "number" || typeof v === "boolean",
+    );
+    if (scalar === undefined) throw new Error("no scalar RTA config field to round-trip");
+    const [field, value] = scalar;
+    const configureRta = allTools.find((t) => t.name === "configure_rta");
+    if (configureRta === undefined) throw new Error("configure_rta tool missing");
+    const after = (await configureRta.handler(
+      client,
+      z.object(configureRta.inputSchema).parse({ settings: { [field]: value } }),
+    )) as Record<string, unknown>;
+    expect(after).toEqual(before);
   });
 });
 
