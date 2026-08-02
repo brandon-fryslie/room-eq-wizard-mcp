@@ -100,14 +100,14 @@ describe("start_stepped_measurement", () => {
     const result = (await invoke("start_stepped_measurement", new RewClient(), {
       settlingTimeMs: 200,
       frequencyHz: 1000,
-    })) as { started: boolean };
+    })) as { started: boolean; progress: unknown };
     expect(bodyAt(calls, "/stepped-measurement/command")).toEqual({
       command: "Start",
       settlingTimems: 200,
       frequencyHz: 1000,
     });
     expect(result.started).toBe(true);
-    expect((result as { progress: unknown }).progress).toEqual({ point: 0, points: 31 });
+    expect(result.progress).toEqual({ point: 0, points: 31 });
   });
 
   it("maps levelDbfs to REW's leveldBFS wire key", async () => {
