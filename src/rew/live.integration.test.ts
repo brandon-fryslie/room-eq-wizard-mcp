@@ -136,6 +136,36 @@ describe.skipIf(!rewIsUp)("live REW", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  // room-api-coverage-2p5.1: the RTA command names in src/tools/rta.ts were pinned
+  // against this live /rta/commands list (Start/Stop/Reset averaging for control_rta,
+  // Save current/peak/both for save_rta_capture). This is the check that reality
+  // still agrees; if it fails, fix the pinned strings, not this test.
+  it("advertises the pinned RTA commands and answers its state endpoints", async () => {
+    const commands = await client.get("/rta/commands", unknownSchema);
+    const asText = JSON.stringify(commands);
+    for (const command of ["Start", "Stop", "Reset averaging", "Save current", "Save peak", "Save both"]) {
+      expect(asText, command).toContain(command);
+    }
+    await expect(client.get("/rta/status", unknownSchema)).resolves.toBeDefined();
+    await expect(client.get("/rta/configuration", unknownSchema)).resolves.toBeDefined();
+  });
+
+  // configure_rta posts a partial config; confirm REW merges it (leaves the other
+  // fields intact) rather than replacing the whole object — a round-trip that sets
+  // a field to its own current value, so the suite mutates nothing net.
+  it("applies a partial RTA configuration without disturbing other fields", async () => {
+    const before = (await client.get("/rta/configuration", unknownSchema)) as Record<string, unknown>;
+    const configureRta = allTools.find((t) => t.name === "configure_rta");
+    if (configureRta === undefined) throw new Error("configure_rta tool missing");
+    const after = (await configureRta.handler(
+      client,
+      z.object(configureRta.inputSchema).parse({ settings: { window: before.window } }),
+    )) as Record<string, unknown>;
+    expect(after.window).toBe(before.window);
+    // fftLength was not in our partial — a merge leaves it, a replace would drop it.
+    expect(after.fftLength).toBe(before.fftLength);
+  });
 });
 
 if (!rewIsUp) {
