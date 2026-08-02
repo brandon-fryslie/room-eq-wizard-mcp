@@ -75,6 +75,17 @@ export const audioTools = [
         // [LAW:no-silent-failure] a no-op configure is a caller mistake, not success.
         throw new Error("provide at least one audio setting to change (see get_audio_config)");
       }
+      // The device/input fields below post to /audio/java/*, which only exists under
+      // the Java driver. Switching to a non-Java driver in the same call would apply
+      // the driver change and then 404 on those writes, leaving state half-set — so
+      // reject that contradiction up front rather than half-applying it.
+      // [LAW:no-silent-failure]
+      const javaFields = [args.inputDevice, args.input, args.inputChannel, args.outputDevice, args.output];
+      if (args.driver !== undefined && args.driver !== "Java" && javaFields.some((v) => v !== undefined)) {
+        throw new Error(
+          `driver '${args.driver}' is not 'Java', so Java device/input fields cannot be set in the same call — switch the driver first, then configure its devices`,
+        );
+      }
       // [LAW:dataflow-not-control-flow] each provided value flows to its endpoint;
       // the set of writes is fixed, the data decides which ones carry a change.
       if (args.driver !== undefined) await client.post("/audio/driver", { driver: args.driver });

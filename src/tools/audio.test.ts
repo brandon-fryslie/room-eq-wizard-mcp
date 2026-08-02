@@ -71,6 +71,26 @@ describe("configure_audio", () => {
     expect(postBody(calls, "/audio/java/input")).toEqual({ input: "Input 1" });
   });
 
+  it("posts the device/output setters to their Java endpoints", async () => {
+    const { calls } = stubFetch([{ body: {} }]);
+    await invoke("configure_audio", new RewClient(), {
+      inputDevice: "Scarlett",
+      outputDevice: "Scarlett",
+      output: "Output 1",
+    });
+    expect(postBody(calls, "/audio/java/input-device")).toEqual({ device: "Scarlett" });
+    expect(postBody(calls, "/audio/java/output-device")).toEqual({ device: "Scarlett" });
+    expect(postBody(calls, "/audio/java/output")).toEqual({ output: "Output 1" });
+  });
+
+  it("rejects Java device fields when switching to a non-Java driver, before any write", async () => {
+    const { calls } = stubFetch([{}]);
+    await expect(
+      invoke("configure_audio", new RewClient(), { driver: "ASIO", inputDevice: "foo" }),
+    ).rejects.toThrow(/not 'Java'/);
+    expect(calls).toHaveLength(0);
+  });
+
   it("rejects a no-op configure before any wire call", async () => {
     const { calls } = stubFetch([{}]);
     await expect(invoke("configure_audio", new RewClient(), {})).rejects.toThrow(

@@ -228,7 +228,9 @@ describe.skipIf(!rewIsUp)("live REW", () => {
       await expect(inputLevels.handler(client, parse({ action: "start" }))).resolves.toBeDefined();
       await expect(inputLevels.handler(client, parse({ action: "read" }))).resolves.toBeDefined();
     } finally {
-      await inputLevels.handler(client, parse({ action: "stop" }));
+      // Best-effort cleanup: a stop failure must not supersede and mask a real
+      // start/read assertion error from the try block.
+      await inputLevels.handler(client, parse({ action: "stop" })).catch(() => {});
     }
   });
 });
