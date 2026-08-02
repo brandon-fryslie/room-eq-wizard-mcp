@@ -96,7 +96,9 @@ export const filterSettingSchema = z.looseObject({
   type: z.string().optional(),
   enabled: z.boolean().optional(),
   frequency: z.number().optional(),
-  gain: z.number().optional(),
+  // REW's wire field is `gaindB` for both reads and writes — a `gain` field is
+  // silently ignored on write and absent on read. [LAW:one-source-of-truth]
+  gaindB: z.number().optional(),
   q: z.number().optional(),
 });
 export type FilterSetting = z.output<typeof filterSettingSchema>;

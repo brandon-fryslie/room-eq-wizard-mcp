@@ -1,7 +1,44 @@
 import { z } from "zod";
 import { defineTool, measurementIdInput } from "./registry.js";
+import type { RewClient } from "../rew/client.js";
 import { filterListSchema, spectrumSchema, unknownSchema } from "../rew/types.js";
-import { summarizeSpectrum } from "../analysis/spectrum.js";
+import { decodeFloats } from "../rew/codec.js";
+import { decimateLog, summarizeSpectrum } from "../analysis/spectrum.js";
+import { measurementsCreatedBy, summarize } from "./shared.js";
+
+// The EQ settings endpoints (match-target-settings, default-room-curve-settings)
+// are single objects: to change one field REW wants the whole object back, so read,
+// merge the provided fields, write, and return the fresh state. With no fields this
+// is a plain read. [LAW:one-source-of-truth] the read-merge-write lives once here.
+async function readOrMergeSettings(
+  client: RewClient,
+  endpoint: string,
+  settings: Record<string, unknown> | undefined,
+): Promise<unknown> {
+  if (settings !== undefined && Object.keys(settings).length > 0) {
+    // Read as an object so the merge spread is sound: z.looseObject stamps the
+    // response as a real object and throws on null/string/array, rather than a
+    // cast that would silently spread a non-object into garbage. [LAW:parse-dont-validate]
+    const current = await client.get(endpoint, z.looseObject({}));
+    await client.post(endpoint, { ...current, ...settings });
+  }
+  return client.get(endpoint, unknownSchema);
+}
+
+// The filters impulse response is an ImpulseResponse: metadata plus a base64 sample
+// array. We surface metadata and a peak statistic, never the raw samples — the full
+// array is hundreds of KB, too large for a tool result; the DSP-export flow owns that.
+// When the measurement has no filters with an effect, REW answers { message } instead
+// of an IR, so the two shapes are a discriminated union; the IR shape (with required
+// `data`) is tried first, the sentinel falls through. [LAW:parse-dont-validate]
+const impulseResponseSchema = z.looseObject({
+  startTime: z.number().optional(),
+  sampleInterval: z.number().optional(),
+  sampleRate: z.number().optional(),
+  data: z.string(),
+});
+const noIrDataSchema = z.looseObject({ message: z.string() });
+const filtersIrSchema = z.union([impulseResponseSchema, noIrDataSchema]);
 
 export const eqTools = [
   defineTool({
@@ -81,7 +118,7 @@ export const eqTools = [
             index: z.number().int().min(1).describe("1-based filter slot"),
             type: z.string().optional().describe("Filter type, e.g. 'PK', 'LS', 'HS', 'None'"),
             frequency: z.number().positive().optional().describe("Centre frequency, Hz"),
-            gain: z.number().optional().describe("Gain, dB"),
+            gaindB: z.number().optional().describe("Gain in dB (REW's wire field name)"),
             q: z.number().positive().optional().describe("Q factor"),
             enabled: z.boolean().optional(),
           }),
@@ -118,5 +155,158 @@ export const eqTools = [
     },
     handler: async (client, args) =>
       client.get("/eq/equalisers", unknownSchema, { manufacturer: args.manufacturer }),
+  }),
+  defineTool({
+    name: "house_curve",
+    description:
+      "Read, set, or clear REW's house curve — the target-shaping curve applied on top of the flat target (e.g. a gentle bass lift). action 'get' returns the current file path and log-interpolation flag; 'set' loads a curve file (logInterpolation is applied first, as REW requires); 'clear' removes it. Affects what auto_eq matches to.",
+    inputSchema: {
+      action: z.enum(["get", "set", "clear"]).describe("get the current curve, set a file, or clear it"),
+      path: z.string().optional().describe("House curve file path (forward slashes) — required for 'set'"),
+      logInterpolation: z
+        .boolean()
+        .optional()
+        .describe("Interpolate the curve on a log-frequency axis (set with 'set', before the path)"),
+    },
+    handler: async (client, args) => {
+      if (args.action === "set") {
+        if (args.path === undefined || args.path.trim().length === 0) {
+          // [LAW:no-silent-failure] 'set' with no path is a caller mistake — 'clear' removes.
+          throw new Error("house_curve 'set' requires a 'path' (use action 'clear' to remove the curve)");
+        }
+        // Per REW: set the log-interpolation flag before the file path.
+        if (args.logInterpolation !== undefined) {
+          await client.post("/eq/house-curve-log-interpolation", args.logInterpolation);
+        }
+        await client.post("/eq/house-curve", args.path);
+      }
+      if (args.action === "clear") {
+        await client.delete("/eq/house-curve");
+      }
+      return {
+        path: await client.get("/eq/house-curve", unknownSchema),
+        logInterpolation: await client.get("/eq/house-curve-log-interpolation", unknownSchema),
+      };
+    },
+  }),
+  defineTool({
+    name: "get_target_response",
+    description:
+      "Read a measurement's EQ target as a log-spaced, decimated curve — what auto_eq is aiming the response at. Use this to explain why the optimiser chose the filters it did (compare it against get_frequency_response).",
+    inputSchema: {
+      measurement: measurementIdInput,
+      maxPoints: z.number().int().min(10).max(500).default(120).describe("Maximum points (log-spaced)"),
+    },
+    handler: async (client, args) => {
+      const target = await client.get(
+        `/measurements/${encodeURIComponent(args.measurement)}/target-response`,
+        spectrumSchema,
+        { ppo: 96 },
+      );
+      const summary = summarizeSpectrum(target.freqsHz, target.magDb);
+      return {
+        unit: target.unit,
+        rangeHz: summary.rangeHz,
+        meanDb: summary.meanDb,
+        points: decimateLog(target.freqsHz, target.magDb, args.maxPoints),
+      };
+    },
+  }),
+  defineTool({
+    name: "eq_match_target_settings",
+    description:
+      "Read or change the settings REW's target matcher uses — max individual/overall boost, the flatness target, the match frequency range, and shelf-filter limits. Call with no settings to read them; provide any subset to change them (merged over the current values). These are the knobs auto_eq otherwise inherits silently from the GUI; set them before auto_eq for reproducible results. Field names come from the read (e.g. individualMaxBoostdB, overallMaxBoostdB, startFrequency, endFrequency, flatnessTargetdB).",
+    inputSchema: {
+      settings: z
+        .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+        .optional()
+        .describe('Fields to change, e.g. { "individualMaxBoostdB": 6, "overallMaxBoostdB": 0 }'),
+    },
+    handler: async (client, args) => readOrMergeSettings(client, "/eq/match-target-settings", args.settings),
+  }),
+  defineTool({
+    name: "eq_room_curve_settings",
+    description:
+      "Read or change REW's default room-curve settings — the sloped target (bass rise / treble fall) added to the flat target. Call with no settings to read; provide any subset to change (merged over current). Fields include addRoomCurve, lowFreqRiseStartHz, lowFreqRiseSlopedBPerOctave, highFreqFallStartHz, highFreqFallSlopedBPerOctave.",
+    inputSchema: {
+      settings: z
+        .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+        .optional()
+        .describe('Fields to change, e.g. { "addRoomCurve": true, "lowFreqRiseSlopedBPerOctave": 1.0 }'),
+    },
+    handler: async (client, args) =>
+      readOrMergeSettings(client, "/eq/default-room-curve-settings", args.settings),
+  }),
+  defineTool({
+    name: "run_eq_command",
+    description:
+      "Run one of REW's EQ commands on a measurement: 'Optimise gains', 'Optimise gains and Qs', 'Optimise gains, Qs and Fcs' refine the current filters; 'Generate predicted measurement', 'Generate filters measurement', 'Generate target measurement' create a new measurement from the EQ result; 'Calculate target level' and 'Match target' are the auto_eq building blocks. Returns any measurement created and the resulting filter bank. Set the equaliser (auto_eq) first so filters exist to optimise.",
+    inputSchema: {
+      measurement: measurementIdInput,
+      command: z
+        .enum([
+          "Calculate target level",
+          "Match target",
+          "Optimise gains",
+          "Optimise gains and Qs",
+          "Optimise gains, Qs and Fcs",
+          "Generate predicted measurement",
+          "Generate filters measurement",
+          "Generate target measurement",
+        ])
+        .describe("EQ command to run (see /measurements/eq/commands)"),
+    },
+    handler: async (client, args) => {
+      const id = encodeURIComponent(args.measurement);
+      const { created } = await measurementsCreatedBy(client, () =>
+        client.command(`/measurements/${id}/eq/command`, { command: args.command }),
+      );
+      return {
+        command: args.command,
+        created: created.map(summarize),
+        filters: await client.get(`/measurements/${id}/filters`, filterListSchema),
+      };
+    },
+  }),
+  defineTool({
+    name: "get_filters_impulse_response",
+    description:
+      "Render a measurement's EQ filter bank as an impulse response at a chosen sample rate and length — the basis for a convolution-DSP correction filter. Returns the IR metadata (sample rate, interval, length) and its peak sample, not the raw samples (which are large); the full export belongs to the DSP-export flow. Needs no measurement IR — just its filters.",
+    inputSchema: {
+      measurement: measurementIdInput,
+      sampleRate: z.number().int().min(1).default(48000).describe("Sample rate of the rendered IR, Hz"),
+      length: z
+        .number()
+        .int()
+        .min(1)
+        .max(4_194_304)
+        .default(65536)
+        .describe("IR length in samples (max 4,194,304)"),
+    },
+    handler: async (client, args) => {
+      const ir = await client.get(
+        `/measurements/${encodeURIComponent(args.measurement)}/filters-impulse-response`,
+        filtersIrSchema,
+        { samplerate: args.sampleRate, length: args.length },
+      );
+      if (typeof ir.data !== "string") {
+        // [LAW:no-silent-failure] no effective filters is a real state to report.
+        // (Both wire shapes are loose objects, so discriminate on the data field.)
+        throw new Error(
+          `no filter impulse response (REW: "${String(ir.message)}") — the measurement has no EQ ` +
+            `filters that have an effect; set the equaliser and run auto_eq or add filters first`,
+        );
+      }
+      const samples = decodeFloats(ir.data);
+      let peak = 0;
+      for (const s of samples) peak = Math.max(peak, Math.abs(s));
+      return {
+        sampleRate: ir.sampleRate,
+        sampleIntervalSeconds: ir.sampleInterval,
+        startTime: ir.startTime,
+        numSamples: samples.length,
+        peakSample: peak,
+      };
+    },
   }),
 ];

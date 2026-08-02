@@ -245,6 +245,75 @@ describe.skipIf(!rewIsUp)("live REW", () => {
     expect(config.measurementMode).toBeDefined();
     expect(config.protectionOptions).toBeDefined();
   });
+
+  // room-api-coverage-2p5.5: the EQ layer end to end. Unlike /measure, EQ commands
+  // and config are NOT Pro-gated, so the whole flow runs live. A Dirac gives us a
+  // measurement to EQ; we read its target, run an EQ command that creates a new
+  // measurement, and render the filter IR — then delete everything we made.
+  it("reads EQ settings and runs an EQ command that creates a measurement", async () => {
+    const tool = (name: string) => {
+      const t = allTools.find((x) => x.name === name);
+      if (t === undefined) throw new Error(`${name} tool missing`);
+      return (a: Record<string, unknown>) => t.handler(client, z.object(t.inputSchema).parse(a));
+    };
+    const uuids = async () =>
+      Object.values(await client.get("/measurements", measurementListSchema)).map((m) => m.uuid);
+    const before = new Set(await uuids());
+    // Track what we create so cleanup deletes from this list without a fresh GET —
+    // a re-fetch in the finally would throw and skip every delete if REW went away.
+    const created: string[] = [];
+    try {
+      await client.command("/measurements/command", {
+        command: "Dirac",
+        parameters: ["48000", "65536", "32768"],
+      });
+      const dirac = (await uuids()).find((u) => !before.has(u));
+      if (dirac === undefined) throw new Error("Dirac created no measurement");
+      created.push(dirac);
+
+      // Reads that need no EQ setup.
+      await expect(tool("get_target_response")({ measurement: dirac })).resolves.toBeDefined();
+      await expect(tool("eq_match_target_settings")({})).resolves.toBeDefined();
+      await expect(tool("house_curve")({ action: "get" })).resolves.toBeDefined();
+
+      // Set the equaliser so filters exist, then a command that creates a measurement.
+      await client.post(`/measurements/${dirac}/equaliser`, { manufacturer: "Generic", model: "Generic" });
+      const result = (await tool("run_eq_command")({
+        measurement: dirac,
+        command: "Generate filters measurement",
+      })) as { created: Array<{ uuid: string }> };
+      expect(result.created.length).toBeGreaterThanOrEqual(1);
+      for (const m of result.created) created.push(m.uuid);
+
+      // Give the filter bank an effective filter (REW's field is `gaindB`) so the
+      // impulse response has something to render — a flat Dirac otherwise has none.
+      await client.put(`/measurements/${dirac}/filters`, {
+        index: 1,
+        type: "PK",
+        frequency: 60,
+        gaindB: -3,
+        q: 2,
+        enabled: true,
+      });
+      // The gaindB fix: the set gain must survive a read back (a `gain` field would not).
+      const filters = (await tool("get_eq_filters")({ measurement: dirac })) as Array<{
+        index?: number;
+        gaindB?: number;
+      }>;
+      expect(filters.find((f) => f.index === 1)?.gaindB).toBeCloseTo(-3, 3);
+
+      const ir = (await tool("get_filters_impulse_response")({
+        measurement: dirac,
+        sampleRate: 48000,
+        length: 8192,
+      })) as { numSamples: number };
+      expect(ir.numSamples).toBe(8192);
+    } finally {
+      // Delete from the tracked list — no fresh GET, so cleanup runs even if REW's
+      // measurement list is now unreachable. Each delete is best-effort.
+      for (const u of created) await client.delete(`/measurements/${u}`).catch(() => {});
+    }
+  });
 });
 
 if (!rewIsUp) {
