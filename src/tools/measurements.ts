@@ -77,26 +77,10 @@ export const measurementTools = [
       return { loadedCount: created.length, loaded: created.map(summarize) };
     },
   }),
-  defineTool({
-    name: "run_measurement_command",
-    description:
-      "Run a raw REW command on one measurement (discover names with list_api_commands / the measurement's own command list). Escape hatch for operations without a dedicated tool, e.g. 'Trim IR to windows' or 'Estimate IR delay'.",
-    inputSchema: {
-      measurement: measurementIdInput,
-      command: z.string().describe("REW command name, e.g. 'Estimate IR delay'"),
-      parameters: z
-        .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
-        .optional()
-        .describe("Command parameters as REW documents them"),
-    },
-    handler: async (client, args) => {
-      const result = await client.command(
-        `/measurements/${encodeURIComponent(args.measurement)}/command`,
-        { command: args.command, parameters: args.parameters },
-      );
-      return result ?? `Command '${args.command}' completed`;
-    },
-  }),
+  // Folded into run_rew_command (area="measurement") — see src/tools/commands.ts.
+  // [LAW:one-type-per-behavior] one escape hatch over the { command, parameters }
+  // protocol rather than a per-area copy; the alignment and RTA tools keep dedicated
+  // hatches only because their command bodies differ from the standard shape.
   defineTool({
     name: "get_measurement_commands",
     description: "List the commands REW accepts for a specific measurement.",

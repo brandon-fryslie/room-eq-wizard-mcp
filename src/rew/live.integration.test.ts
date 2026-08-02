@@ -179,6 +179,36 @@ describe.skipIf(!rewIsUp)("live REW", () => {
     )) as Record<string, unknown>;
     expect(after).toEqual(before);
   });
+
+  // room-api-coverage-2p5.2: run_rew_command end to end against a real REW. "Dirac"
+  // on the measurements area generates a synthetic impulse measurement — a
+  // state-independent command that exercises the array (positional) parameters path
+  // and proves the generic escape hatch reaches REW and creates real output. The
+  // created measurement is deleted afterwards so the suite leaves nothing behind.
+  it("runs a measurements command (Dirac) through run_rew_command and cleans up", async () => {
+    const runRewCommand = allTools.find((t) => t.name === "run_rew_command");
+    if (runRewCommand === undefined) throw new Error("run_rew_command tool missing");
+    const before = new Set(
+      Object.values(await client.get("/measurements", measurementListSchema)).map((m) => m.uuid),
+    );
+    let createdUuid: string | undefined;
+    try {
+      await runRewCommand.handler(
+        client,
+        z.object(runRewCommand.inputSchema).parse({
+          area: "measurements",
+          command: "Dirac",
+          parameters: ["48000", "131072", "65536"],
+        }),
+      );
+      const after = Object.values(await client.get("/measurements", measurementListSchema));
+      const created = after.find((m) => !before.has(m.uuid));
+      expect(created).toBeDefined();
+      createdUuid = created?.uuid;
+    } finally {
+      if (createdUuid !== undefined) await client.delete(`/measurements/${createdUuid}`);
+    }
+  });
 });
 
 if (!rewIsUp) {
