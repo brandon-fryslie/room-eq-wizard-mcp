@@ -411,6 +411,17 @@ describe.skipIf(!rewIsUp)("live REW", () => {
     expect(config.type).toBeDefined();
     await expect(tool("get_stepped_progress")({})).resolves.toBeDefined();
   });
+
+  // room-api-coverage-2p5.10: generator signals + protection, and SPL-meter config.
+  // Read-only (protection/config read with no fields) — nothing is played.
+  it("lists generator signals and reads generator/SPL config", async () => {
+    const signals = (await tool("list_generator_signals")({})) as string[];
+    expect(Array.isArray(signals)).toBe(true);
+    expect(signals).toContain("sine");
+    await expect(tool("set_generator_protection")({})).resolves.toBeDefined();
+    const splConfig = (await tool("spl_meter_config")({ meterNumber: 1 })) as Record<string, unknown>;
+    expect(splConfig).toHaveProperty("rollingLeqActive");
+  });
 });
 
 if (!rewIsUp) {
