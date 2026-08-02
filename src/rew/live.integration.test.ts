@@ -25,6 +25,14 @@ const rewIsUp = await fetch(`${baseUrl}/application/commands`, {
 describe.skipIf(!rewIsUp)("live REW", () => {
   const client = new RewClient({ baseUrl });
 
+  // [LAW:single-enforcer] one place that looks a tool up, parses args through its
+  // own Zod shape, and invokes its handler against the shared client.
+  const tool = (name: string) => {
+    const t = allTools.find((x) => x.name === name);
+    if (t === undefined) throw new Error(`${name} tool missing`);
+    return (a: Record<string, unknown>) => t.handler(client, z.object(t.inputSchema).parse(a));
+  };
+
   it("lists application commands", async () => {
     const commands = await client.get("/application/commands", unknownSchema);
     expect(commands).toBeTruthy();
@@ -251,11 +259,6 @@ describe.skipIf(!rewIsUp)("live REW", () => {
   // measurement to EQ; we read its target, run an EQ command that creates a new
   // measurement, and render the filter IR — then delete everything we made.
   it("reads EQ settings and runs an EQ command that creates a measurement", async () => {
-    const tool = (name: string) => {
-      const t = allTools.find((x) => x.name === name);
-      if (t === undefined) throw new Error(`${name} tool missing`);
-      return (a: Record<string, unknown>) => t.handler(client, z.object(t.inputSchema).parse(a));
-    };
     const uuids = async () =>
       Object.values(await client.get("/measurements", measurementListSchema)).map((m) => m.uuid);
     const before = new Set(await uuids());
@@ -319,11 +322,6 @@ describe.skipIf(!rewIsUp)("live REW", () => {
   // Dirac has an impulse response, so it exercises every read; generate_phase_version
   // creates a measurement. Everything created is deleted afterwards.
   it("reads IR data and runs an IR process on a measurement", async () => {
-    const tool = (name: string) => {
-      const t = allTools.find((x) => x.name === name);
-      if (t === undefined) throw new Error(`${name} tool missing`);
-      return (a: Record<string, unknown>) => t.handler(client, z.object(t.inputSchema).parse(a));
-    };
     const before = new Set(
       Object.values(await client.get("/measurements", measurementListSchema)).map((m) => m.uuid),
     );
@@ -358,11 +356,6 @@ describe.skipIf(!rewIsUp)("live REW", () => {
   // confirms the spectrogram result uses the same Frequencies/Times/slices surface
   // shape the waterfall does (the tool parses both the same way).
   it("generates a waterfall and spectrogram and returns reduced decay findings", async () => {
-    const tool = (name: string) => {
-      const t = allTools.find((x) => x.name === name);
-      if (t === undefined) throw new Error(`${name} tool missing`);
-      return (a: Record<string, unknown>) => t.handler(client, z.object(t.inputSchema).parse(a));
-    };
     const before = new Set(
       Object.values(await client.get("/measurements", measurementListSchema)).map((m) => m.uuid),
     );
@@ -399,11 +392,6 @@ describe.skipIf(!rewIsUp)("live REW", () => {
   // config and the simulated response. Read-only, since the sim config is global
   // REW state we do not want to mutate net.
   it("reads the room-sim config and a simulated response", async () => {
-    const tool = (name: string) => {
-      const t = allTools.find((x) => x.name === name);
-      if (t === undefined) throw new Error(`${name} tool missing`);
-      return (a: Record<string, unknown>) => t.handler(client, z.object(t.inputSchema).parse(a));
-    };
     const config = (await tool("get_roomsim_config")({})) as { roomSize: unknown; sources: unknown };
     expect(config.roomSize).toBeDefined();
     expect(config.sources).toBeDefined();

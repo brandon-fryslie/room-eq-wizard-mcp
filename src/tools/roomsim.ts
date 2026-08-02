@@ -52,6 +52,11 @@ export const roomsimTools = [
         .describe('Calc options, e.g. { "useCrossoverFilter": true, "crossoverFrequencyHz": 80 }'),
     },
     handler: async (client, args) => {
+      if (Object.values(args).every((v) => v === undefined)) {
+        // [LAW:no-silent-failure] a no-op configure is a caller mistake, not success —
+        // checked first, before any write. [LAW:dataflow-not-control-flow]
+        throw new Error("provide at least one room-sim setting to change (see get_roomsim_config)");
+      }
       const dims = { lengthM: "length", widthM: "width", heightM: "height" } as const;
       const dimChanges = Object.entries(dims).filter(([k]) => args[k as keyof typeof dims] !== undefined);
       if (dimChanges.length > 0) {
@@ -70,10 +75,6 @@ export const roomsimTools = [
       }
       if (args.options !== undefined) {
         await readMergeWriteSettings(client, "/roomsim/options", args.options);
-      }
-      if (Object.values(args).every((v) => v === undefined)) {
-        // [LAW:no-silent-failure] a no-op configure is a caller mistake, not success.
-        throw new Error("provide at least one room-sim setting to change (see get_roomsim_config)");
       }
       return readRoomsimConfig(client);
     },
@@ -122,6 +123,7 @@ export const roomsimTools = [
         .describe("A single source to read alone; omit for all sources summed"),
       micPosition: z
         .string()
+        .min(1)
         .default("Main")
         .describe("Mic position: 'Main', 'To left', 'To right', 'In front', 'Behind', 'Above', 'Below'"),
       maxPoints: z.number().int().min(10).max(500).default(120).describe("Maximum points (log-spaced)"),
