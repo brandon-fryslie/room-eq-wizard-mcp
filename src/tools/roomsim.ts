@@ -9,7 +9,7 @@ import { defineTool } from "./registry.js";
 import type { RewClient } from "../rew/client.js";
 import { spectrumSchema, unknownSchema } from "../rew/types.js";
 import { decimateLog, summarizeSpectrum } from "../analysis/spectrum.js";
-import { readMergeWriteSettings } from "./shared.js";
+import { writeMergedSettings } from "./shared.js";
 
 async function readRoomsimConfig(client: RewClient): Promise<Record<string, unknown>> {
   const read = (path: string) => client.get(path, unknownSchema);
@@ -68,13 +68,13 @@ export const roomsimTools = [
       }
       if (args.sealed !== undefined) await client.post("/roomsim/room-is-sealed", args.sealed);
       if (args.absorptions !== undefined) {
-        await readMergeWriteSettings(client, "/roomsim/absorptions", args.absorptions);
+        await writeMergedSettings(client, "/roomsim/absorptions", args.absorptions);
       }
       if (args.micOffsets !== undefined) {
-        await readMergeWriteSettings(client, "/roomsim/mic-posn-offsets", args.micOffsets);
+        await writeMergedSettings(client, "/roomsim/mic-posn-offsets", args.micOffsets);
       }
       if (args.options !== undefined) {
-        await readMergeWriteSettings(client, "/roomsim/options", args.options);
+        await writeMergedSettings(client, "/roomsim/options", args.options);
       }
       return readRoomsimConfig(client);
     },
@@ -99,10 +99,10 @@ export const roomsimTools = [
         throw new Error("provide position and/or configuration to change for the source");
       }
       if (args.position !== undefined) {
-        await readMergeWriteSettings(client, `/roomsim/${src}/position`, args.position);
+        await writeMergedSettings(client, `/roomsim/${src}/position`, args.position);
       }
       if (args.configuration !== undefined) {
-        await readMergeWriteSettings(client, `/roomsim/${src}/configuration`, args.configuration);
+        await writeMergedSettings(client, `/roomsim/${src}/configuration`, args.configuration);
       }
       return {
         source: args.source,

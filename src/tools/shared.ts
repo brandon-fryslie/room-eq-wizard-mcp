@@ -19,18 +19,30 @@ import {
  * a plain read. The write verb differs by endpoint (POST vs PUT). [LAW:single-enforcer]
  * the merge strategy lives once here; callers supply only the endpoint and verb.
  */
-export async function readMergeWriteSettings(
+export async function writeMergedSettings(
   client: RewClient,
   endpoint: string,
   settings: Record<string, unknown> | undefined,
   verb: "post" | "put" = "post",
-): Promise<unknown> {
+): Promise<void> {
   if (settings !== undefined && Object.keys(settings).length > 0) {
     // Read as an object so the spread is sound — z.looseObject throws on a non-object
     // rather than a cast silently spreading garbage. [LAW:parse-dont-validate]
     const current = await client.get(endpoint, z.looseObject({}));
     await client[verb](endpoint, { ...current, ...settings });
   }
+}
+
+/** {@link writeMergedSettings} then a read of the fresh state — for callers whose
+ *  result IS this endpoint. Callers that re-read a broader snapshot afterward should
+ *  use writeMergedSettings directly to avoid a discarded GET. [LAW:effects-at-boundaries] */
+export async function readMergeWriteSettings(
+  client: RewClient,
+  endpoint: string,
+  settings: Record<string, unknown> | undefined,
+  verb: "post" | "put" = "post",
+): Promise<unknown> {
+  await writeMergedSettings(client, endpoint, settings, verb);
   return client.get(endpoint, unknownSchema);
 }
 
