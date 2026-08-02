@@ -3,6 +3,7 @@ import { z } from "zod";
 import { RewClient } from "../rew/client.js";
 import { stubFetch } from "../rew/fetch-stub.js";
 import { allTools } from "./index.js";
+import { alignmentStateEndpoints } from "./alignment.js";
 
 // [LAW:behavior-not-structure] these tests assert the wire contract — which
 // endpoints receive which bodies in which order — never the handlers' internals.
@@ -114,9 +115,10 @@ describe("configure_alignment", () => {
       ["/alignment-tool/mode", "Impulse"],
       ["/alignment-tool/gain-b", -3],
     ]);
-    // Read-back covers every state endpoint.
+    // Read-back covers every state endpoint. [LAW:one-source-of-truth] derive the
+    // count from the endpoint list itself rather than restate a literal that drifts.
     const reads = calls.filter((c) => c.method === "GET");
-    expect(reads.length).toBe(12);
+    expect(reads.length).toBe(alignmentStateEndpoints.length);
   });
 
   it("rejects a call that changes nothing", async () => {
