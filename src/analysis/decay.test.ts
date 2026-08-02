@@ -68,6 +68,20 @@ describe("detectRingingModes", () => {
     );
   });
 
+  it("returns nothing for a surface with fewer than three frequencies", () => {
+    const s = surface([40, 50], [0, 100], [80, 300]);
+    expect(detectRingingModes(s, 20)).toEqual([]);
+  });
+
+  it("suppresses a weaker ringing peak within 1/3 octave of a stronger one", () => {
+    // 50 Hz and 60 Hz both ring (300 / 250 ms) with a fast dip at 55 Hz between
+    // them, so both are local maxima of the excess. 60 is within 1/3 octave of 50
+    // (log2(60/50)=0.26 < 0.33) and weaker, so it is suppressed.
+    const s = surface([40, 50, 55, 60, 70], [0, 50, 100, 150, 200, 250, 300, 350], [80, 300, 90, 250, 80]);
+    const modes = detectRingingModes(s, 20, { minExcessMs: 50 });
+    expect(modes.map((m) => m.hz)).toEqual([50]);
+  });
+
   it("flags the frequency that decays slower than its neighbours, and not the rest", () => {
     const s = surface(freqsHz, timesMs, decayByFreq);
     const modes = detectRingingModes(s, 20, { minExcessMs: 50 });

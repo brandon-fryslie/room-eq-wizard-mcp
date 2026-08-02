@@ -33,6 +33,13 @@ export function parseDecaySurface(raw: unknown): DecaySurface {
     );
   }
   const freqsHz = Array.from(decodeFloats(surface["Frequencies"]));
+  for (let i = 1; i < freqsHz.length; i++) {
+    if (freqsHz[i] <= freqsHz[i - 1]) {
+      // [LAW:parse-dont-validate] the DecaySurface contract (and localMedianDecay's
+      // two-pointer window) require a strictly ascending frequency axis; stamp it.
+      throw new Error(`decay surface frequencies are not strictly ascending at index ${i}`);
+    }
+  }
   const timesMs = Array.from(decodeFloats(surface["Times"]));
   const splByTime = timesMs.map((_, t) => {
     const slice = surface[String(t)];

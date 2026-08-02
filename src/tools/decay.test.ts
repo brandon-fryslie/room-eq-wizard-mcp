@@ -85,6 +85,25 @@ describe("generate_waterfall", () => {
       /no decay surface/,
     );
   });
+
+  it("rejects a non-ascending frequency axis", async () => {
+    const outOfOrder = {
+      message: JSON.stringify({
+        results: {
+          "0": {
+            Frequencies: encodeFloats([40, 63, 50]), // not ascending
+            Times: encodeFloats([0, 100]),
+            "0": encodeFloats([80, 80, 80]),
+            "1": encodeFloats([60, 60, 60]),
+          },
+        },
+      }),
+    };
+    stubFetch([{}, { body: outOfOrder }]);
+    await expect(invoke("generate_waterfall", new RewClient(), { measurement: "m1" })).rejects.toThrow(
+      /not strictly ascending/,
+    );
+  });
 });
 
 describe("generate_spectrogram", () => {
