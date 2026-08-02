@@ -41,6 +41,13 @@ export function parseDecaySurface(raw: unknown): DecaySurface {
     }
   }
   const timesMs = Array.from(decodeFloats(surface["Times"]));
+  for (let i = 1; i < timesMs.length; i++) {
+    if (timesMs[i] <= timesMs[i - 1]) {
+      // [LAW:parse-dont-validate] decayTimeMs interpolates between consecutive slice
+      // times, so the axis must be strictly ascending; stamp it here.
+      throw new Error(`decay surface times are not strictly ascending at index ${i}`);
+    }
+  }
   const splByTime = timesMs.map((_, t) => {
     const slice = surface[String(t)];
     if (typeof slice !== "string") throw new Error(`decay surface is missing slice ${t}`);

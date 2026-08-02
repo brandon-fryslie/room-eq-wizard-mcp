@@ -104,6 +104,26 @@ describe("generate_waterfall", () => {
       /not strictly ascending/,
     );
   });
+
+  it("rejects a non-ascending time axis", async () => {
+    const badTimes = {
+      message: JSON.stringify({
+        results: {
+          "0": {
+            Frequencies: encodeFloats([40, 50, 63]),
+            Times: encodeFloats([0, 100, 50]), // not ascending
+            "0": encodeFloats([80, 80, 80]),
+            "1": encodeFloats([70, 70, 70]),
+            "2": encodeFloats([60, 60, 60]),
+          },
+        },
+      }),
+    };
+    stubFetch([{}, { body: badTimes }]);
+    await expect(invoke("generate_waterfall", new RewClient(), { measurement: "m1" })).rejects.toThrow(
+      /times are not strictly ascending/,
+    );
+  });
 });
 
 describe("generate_spectrogram", () => {
