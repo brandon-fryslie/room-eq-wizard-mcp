@@ -55,6 +55,28 @@ describe("configure_stepped", () => {
     expect(result.frequencySpan).toEqual({ startFreq: 20, endFreq: 20000, ppo: 3 });
   });
 
+  it("merges the level span, FFT config, and options over current", async () => {
+    const { calls } = stubFetchByPath(configPaths());
+    await invoke("configure_stepped", new RewClient(), {
+      levelSpan: { step: 5 },
+      fftConfiguration: { averages: 4 },
+      options: { distortionLimitPercent: 2 },
+    });
+    expect(bodyAt(calls, "/stepped-measurement/level-span")).toEqual({
+      startLevel: -80,
+      endLevel: 0,
+      step: 5,
+    });
+    expect(bodyAt(calls, "/stepped-measurement/fft-configuration")).toEqual({
+      fftLength: "64k",
+      averages: 4,
+    });
+    expect(bodyAt(calls, "/stepped-measurement/options")).toEqual({
+      stopAtDistortionLimit: true,
+      distortionLimitPercent: 2,
+    });
+  });
+
   it("rejects a no-op configure", async () => {
     const { calls } = stubFetch([{}]);
     await expect(invoke("configure_stepped", new RewClient(), {})).rejects.toThrow(
@@ -77,6 +99,7 @@ describe("start_stepped_measurement", () => {
       frequencyHz: 1000,
     });
     expect(result.started).toBe(true);
+    expect((result as { progress: unknown }).progress).toEqual({ point: 0, points: 31 });
   });
 
   it("maps levelDbfs to REW's leveldBFS wire key", async () => {
@@ -132,10 +155,11 @@ describe("control_stepped_measurement", () => {
     ["pause", "Pause"],
     ["resume", "Resume"],
     ["back", "Back"],
-  ])("maps %s to the %s command", async (action, command) => {
+  ])("maps %s to the %s command and returns progress", async (action, command) => {
     const { calls } = stubFetch([{}, { body: { point: 1, points: 31 } }]);
-    await invoke("control_stepped_measurement", new RewClient(), { action });
+    const result = await invoke("control_stepped_measurement", new RewClient(), { action });
     expect(bodyAt(calls, "/stepped-measurement/command")).toEqual({ command });
+    expect(result).toEqual({ point: 1, points: 31 });
   });
 });
 
