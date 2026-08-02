@@ -6,7 +6,6 @@ import {
   noDataMessageSchema,
   rt60Schema,
   spectrumSchema,
-  unknownSchema,
 } from "../rew/types.js";
 import { decodeFloats } from "../rew/codec.js";
 import { decimateLog, summarizeSpectrum } from "../analysis/spectrum.js";
