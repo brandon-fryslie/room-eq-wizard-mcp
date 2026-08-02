@@ -422,6 +422,18 @@ describe.skipIf(!rewIsUp)("live REW", () => {
     const splConfig = (await tool("spl_meter_config")({ meterNumber: 1 })) as Record<string, unknown>;
     expect(splConfig).toHaveProperty("rollingLeqActive");
   });
+
+  // room-api-coverage-2p5.11: application diagnostics + lifecycle. Read diagnostics,
+  // round-trip a flag to its own value (non-mutating), and clear the command record
+  // (a safe no-op when nothing is stuck). Never shutdown — that would kill the API.
+  it("reads diagnostics and exercises the safe lifecycle commands", async () => {
+    const diag = (await tool("get_diagnostics")({})) as { inhibitGraphUpdates: boolean };
+    expect(diag).toHaveProperty("lastWarning");
+    await expect(
+      tool("configure_application")({ inhibitGraphUpdates: diag.inhibitGraphUpdates }),
+    ).resolves.toBeDefined();
+    await expect(tool("clear_command_in_progress")({})).resolves.toBeDefined();
+  });
 });
 
 if (!rewIsUp) {
