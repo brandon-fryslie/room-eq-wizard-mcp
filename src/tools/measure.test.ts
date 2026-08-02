@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { RewClient } from "../rew/client.js";
-import { stubFetch, type FetchCall } from "../rew/fetch-stub.js";
+import { stubFetch, stubFetchByPath, type FetchCall } from "../rew/fetch-stub.js";
 import { allTools } from "./index.js";
 
 // [LAW:behavior-not-structure] assert the wire contract. The /measure write actions
@@ -21,21 +21,23 @@ const postBody = (calls: FetchCall[], path: string) =>
   calls.find((c) => c.method === "POST" && new URL(c.url).pathname === path)?.body;
 
 describe("get_measure_config", () => {
-  it("reads the session settings into one object", async () => {
-    stubFetch([
-      { body: "Single" }, // measurement-mode
-      { body: 1 }, // number-of-repetitions
-      { body: 1 }, // sweep/repetitions
-      { body: "None" }, // timing/reference
-      { body: "From REW" }, // playback-mode
-      { body: true }, // capture-noise-floor
-      { body: 0 }, // start-delay
-      { body: false }, // fill-silence-with-dither
-      { body: false }, // invert-second-output
-      { body: { clippingAbort: true } }, // protection-options
-    ]);
+  it("reads the session settings into one object, keyed by endpoint", async () => {
+    // Keyed by path, not call order — a reorder of the reads can't mis-map values.
+    stubFetchByPath({
+      "/measure/measurement-mode": { body: "Single" },
+      "/measure/number-of-repetitions": { body: 1 },
+      "/measure/sweep/repetitions": { body: 1 },
+      "/measure/timing/reference": { body: "None" },
+      "/measure/playback-mode": { body: "From REW" },
+      "/measure/capture-noise-floor": { body: true },
+      "/measure/start-delay": { body: 0 },
+      "/measure/fill-silence-with-dither": { body: false },
+      "/measure/invert-second-output": { body: false },
+      "/measure/protection-options": { body: { clippingAbort: true } },
+    });
     const result = (await invoke("get_measure_config", new RewClient())) as Record<string, unknown>;
     expect(result.measurementMode).toBe("Single");
+    expect(result.timingReference).toBe("None");
     expect(result.captureNoiseFloor).toBe(true);
     expect(result.protectionOptions).toEqual({ clippingAbort: true });
   });
@@ -66,6 +68,13 @@ describe("configure_measurement", () => {
       /at least one measurement setting/,
     );
     expect(calls).toHaveLength(0);
+  });
+
+  it("rejects an empty sequentialChannels array at the schema boundary", async () => {
+    stubFetch([{}]);
+    await expect(
+      invoke("configure_measurement", new RewClient(), { sequentialChannels: [] }),
+    ).rejects.toThrow();
   });
 });
 

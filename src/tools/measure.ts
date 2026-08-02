@@ -119,6 +119,7 @@ export const measureTools = [
       invertSecondOutput: z.boolean().optional().describe("Invert the second output when driving two outputs"),
       sequentialChannels: z
         .array(z.string())
+        .min(1)
         .optional()
         .describe("Channels to measure in Sequential mode, e.g. ['L','R'] (see /measure/sequential-choices)"),
       rampStartLevelDbfs: z.number().max(0).optional().describe("Start level for Ramped mode, dBFS"),
