@@ -209,6 +209,30 @@ describe.skipIf(!rewIsUp)("live REW", () => {
       if (createdUuid !== undefined) await client.delete(`/measurements/${createdUuid}`);
     }
   });
+
+  // room-api-coverage-2p5.3: audio preflight against a real REW.
+  it("reads the audio config and reports the mic calibration state", async () => {
+    const getAudioConfig = allTools.find((t) => t.name === "get_audio_config");
+    if (getAudioConfig === undefined) throw new Error("get_audio_config tool missing");
+    const config = (await getAudioConfig.handler(client, {})) as Record<string, unknown>;
+    expect(config.driver).toBeTruthy();
+    // inputCal is always present; its calFilePath (possibly empty) is the cal signal.
+    expect(config.inputCal).toBeDefined();
+  });
+
+  it("runs the input-levels monitor start → read → stop cycle", async () => {
+    const inputLevels = allTools.find((t) => t.name === "input_levels");
+    if (inputLevels === undefined) throw new Error("input_levels tool missing");
+    const parse = (a: Record<string, unknown>) => z.object(inputLevels.inputSchema).parse(a);
+    try {
+      await expect(inputLevels.handler(client, parse({ action: "start" }))).resolves.toBeDefined();
+      await expect(inputLevels.handler(client, parse({ action: "read" }))).resolves.toBeDefined();
+    } finally {
+      // Best-effort cleanup: a stop failure must not supersede and mask a real
+      // start/read assertion error from the try block.
+      await inputLevels.handler(client, parse({ action: "stop" })).catch(() => {});
+    }
+  });
 });
 
 if (!rewIsUp) {
