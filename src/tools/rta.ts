@@ -76,8 +76,10 @@ async function fetchCapture(
 
 // REW command names for the RTA control endpoint, verified live against
 // /rta/commands. [LAW:one-source-of-truth] the action→command mapping lives once;
-// the enum below is derived from these keys.
-const RTA_CONTROL_COMMANDS = {
+// the enum below is derived from these keys, and the live suite iterates the values
+// to confirm REW still advertises them — so these constants are the only place the
+// strings appear. Exported for that reason (cf. alignmentStateEndpoints).
+export const RTA_CONTROL_COMMANDS = {
   start: "Start",
   stop: "Stop",
   // Zeroes the running average — the sample sum the captured/level endpoints
@@ -86,7 +88,7 @@ const RTA_CONTROL_COMMANDS = {
 } as const;
 
 // The three "save the current capture as a measurement" commands, verified live.
-const RTA_SAVE_COMMANDS = {
+export const RTA_SAVE_COMMANDS = {
   current: "Save current",
   peak: "Save peak",
   both: "Save both",

@@ -11,6 +11,7 @@ import { z } from "zod";
 import { RewClient } from "./client.js";
 import { groupListSchema, groupMeasurementsSchema, measurementListSchema, unknownSchema } from "./types.js";
 import { alignmentStateEndpoints } from "../tools/alignment.js";
+import { RTA_CONTROL_COMMANDS, RTA_SAVE_COMMANDS } from "../tools/rta.js";
 import { allTools } from "../tools/index.js";
 
 const baseUrl = process.env.REW_API_URL ?? "http://127.0.0.1:4735";
@@ -144,7 +145,9 @@ describe.skipIf(!rewIsUp)("live REW", () => {
   it("advertises the pinned RTA commands and answers its state endpoints", async () => {
     const commands = await client.get("/rta/commands", unknownSchema);
     const asText = JSON.stringify(commands);
-    for (const command of ["Start", "Stop", "Reset averaging", "Save current", "Save peak", "Save both"]) {
+    // Derived from the tool's own constants — the single source of the strings, so
+    // adding a command there automatically extends this reality check.
+    for (const command of [...Object.values(RTA_CONTROL_COMMANDS), ...Object.values(RTA_SAVE_COMMANDS)]) {
       expect(asText, command).toContain(command);
     }
     await expect(client.get("/rta/status", unknownSchema)).resolves.toBeDefined();
