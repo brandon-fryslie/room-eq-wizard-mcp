@@ -100,6 +100,15 @@ describe("get_rta_capture", () => {
     expect(result.points).toHaveLength(5);
   });
 
+  it("forwards the requested unit as a query parameter", async () => {
+    const { calls } = stubFetch([
+      { body: { startFreq: 0, freqStep: 10, magnitude: encodeFloats([1, 2, 3]) } },
+    ]);
+    await invoke("get_rta_capture", new RewClient(), { unit: "dBFS" });
+    expect(new URL(calls[0].url).pathname).toBe("/rta/captured-data");
+    expect(new URL(calls[0].url).searchParams.get("unit")).toBe("dBFS");
+  });
+
   it("reads the peak-hold trace from captured-peak-data when peak=true", async () => {
     const { calls } = stubFetch([
       { body: { startFreq: 0, freqStep: 10, magnitude: encodeFloats([1, 2, 3, 4]) } },

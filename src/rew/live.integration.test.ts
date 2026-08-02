@@ -159,6 +159,10 @@ describe.skipIf(!rewIsUp)("live REW", () => {
   // drop them.
   it("applies a partial RTA configuration without disturbing other fields", async () => {
     const before = (await client.get("/rta/configuration", unknownSchema)) as Record<string, unknown>;
+    // Guard before Object.entries: a null/non-object response should fail as a
+    // clear assertion, not a TypeError. (typeof null === "object", so check truthy too.)
+    expect(before).toBeTruthy();
+    expect(typeof before).toBe("object");
     const scalar = Object.entries(before).find(
       ([, v]) => typeof v === "string" || typeof v === "number" || typeof v === "boolean",
     );
