@@ -118,7 +118,7 @@ export const eqTools = [
             index: z.number().int().min(1).describe("1-based filter slot"),
             type: z.string().optional().describe("Filter type, e.g. 'PK', 'LS', 'HS', 'None'"),
             frequency: z.number().positive().optional().describe("Centre frequency, Hz"),
-            gain: z.number().optional().describe("Gain, dB"),
+            gaindB: z.number().optional().describe("Gain in dB (REW's wire field name)"),
             q: z.number().positive().optional().describe("Q factor"),
             enabled: z.boolean().optional(),
           }),

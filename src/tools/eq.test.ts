@@ -49,6 +49,25 @@ describe("house_curve", () => {
     await invoke("house_curve", new RewClient(), { action: "clear" });
     expect(calls.some((c) => c.method === "DELETE" && new URL(c.url).pathname === "/eq/house-curve")).toBe(true);
   });
+
+  it("reads the current curve on 'get' without any write", async () => {
+    const { calls } = stubFetch([{ body: "/hc.txt" }, { body: false }]);
+    const result = await invoke("house_curve", new RewClient(), { action: "get" });
+    expect(calls.every((c) => c.method === "GET")).toBe(true);
+    expect(result).toEqual({ path: "/hc.txt", logInterpolation: false });
+  });
+});
+
+describe("set_eq_filters", () => {
+  it("PUTs REW's gaindB field so the gain actually takes", async () => {
+    const { calls } = stubFetch([{}, { body: [{ index: 1, type: "PK", gaindB: -3 }] }]);
+    await invoke("set_eq_filters", new RewClient(), {
+      measurement: "m1",
+      filters: [{ index: 1, type: "PK", frequency: 60, gaindB: -3, q: 2 }],
+    });
+    const put = calls.find((c) => c.method === "PUT");
+    expect(put?.body).toEqual({ index: 1, type: "PK", frequency: 60, gaindB: -3, q: 2 });
+  });
 });
 
 describe("get_target_response", () => {

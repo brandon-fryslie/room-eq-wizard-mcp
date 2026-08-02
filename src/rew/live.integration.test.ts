@@ -290,6 +290,13 @@ describe.skipIf(!rewIsUp)("live REW", () => {
         q: 2,
         enabled: true,
       });
+      // The gaindB fix: the set gain must survive a read back (a `gain` field would not).
+      const filters = (await tool("get_eq_filters")({ measurement: dirac })) as Array<{
+        index?: number;
+        gaindB?: number;
+      }>;
+      expect(filters.find((f) => f.index === 1)?.gaindB).toBeCloseTo(-3, 3);
+
       const ir = (await tool("get_filters_impulse_response")({
         measurement: dirac,
         sampleRate: 48000,
