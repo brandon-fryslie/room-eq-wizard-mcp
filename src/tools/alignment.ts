@@ -22,7 +22,8 @@ export const alignmentStateEndpoints = [
   "index-b",
   "gain-a",
   "gain-b",
-  "delay-a",
+  // Only B has a delay: A is the fixed reference, B is shifted in time to align to A.
+  // REW serves no delay endpoint for A (it 404s). [LAW:one-source-of-truth]
   "delay-b",
   "invert-a",
   "invert-b",
@@ -104,7 +105,7 @@ export const alignmentTools = [
   defineTool({
     name: "get_alignment_state",
     description:
-      "Read the alignment tool's full state: mode, frequency, the A/B measurement indices, per-side gain/delay/polarity, delay limits, plus the modes and commands this REW version accepts.",
+      "Read the alignment tool's full state: mode, frequency, the A/B measurement indices, per-side gain and polarity, B's delay (A is the reference, so only B is delayed), delay limits, plus the modes and commands this REW version accepts.",
     inputSchema: {},
     handler: async (client) => ({
       ...(await readState(client)),
@@ -115,7 +116,7 @@ export const alignmentTools = [
   defineTool({
     name: "configure_alignment",
     description:
-      "Set any subset of the alignment tool's knobs — measurement pair, mode (Phase/Impulse), frequency, per-side gain/delay/polarity, delay limits — and return the resulting state. For manual what-if adjustments; align_measurements does the standard phase-align in one call.",
+      "Set any subset of the alignment tool's knobs — measurement pair, mode (Phase/Impulse), frequency, per-side gain and polarity, B's delay (A is the reference, so only B is delayed), delay limits — and return the resulting state. For manual what-if adjustments; align_measurements does the standard phase-align in one call.",
     inputSchema: {
       measurementA: measurementIdInput.optional().describe("Measurement for slot A, UUID or 1-based index"),
       measurementB: measurementIdInput.optional().describe("Measurement for slot B, UUID or 1-based index"),
@@ -123,7 +124,6 @@ export const alignmentTools = [
       frequencyHz: z.number().positive().optional().describe("Alignment frequency, Hz"),
       gainADb: z.number().optional().describe("Gain applied to A, dB"),
       gainBDb: z.number().optional().describe("Gain applied to B, dB"),
-      delayAMs: z.number().optional().describe("Delay applied to A, ms"),
       delayBMs: z.number().optional().describe("Delay applied to B, ms"),
       invertA: z.boolean().optional().describe("Invert A's polarity"),
       invertB: z.boolean().optional().describe("Invert B's polarity"),
@@ -142,7 +142,6 @@ export const alignmentTools = [
         frequency: args.frequencyHz,
         "gain-a": args.gainADb,
         "gain-b": args.gainBDb,
-        "delay-a": args.delayAMs,
         "delay-b": args.delayBMs,
         "invert-a": args.invertA,
         "invert-b": args.invertB,
