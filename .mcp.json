@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "room-eq-wizard": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["dist/index.js"],
+      "env": {
+        "REW_API_URL": "http://127.0.0.1:4735"
+      }
+    }
+  }
+}
