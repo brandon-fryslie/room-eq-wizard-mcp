@@ -103,18 +103,49 @@ describe("configure_audio", () => {
 describe("set_input_calibration", () => {
   it("merges the cal file path into the existing config and PUTs it", async () => {
     const { calls } = stubFetch([
-      { body: { currentInputSelection: "Default", calDataAllInputs: { dBFSAt94dBSPL: -22.9 } } },
+      {
+        body: {
+          currentInputSelection: "Default",
+          separateCalFileForEachInput: false,
+          calDataAllInputs: { dBFSAt94dBSPL: -22.9 },
+        },
+      },
       {}, // PUT
       { body: { calDataAllInputs: { calFilePath: "/mic.txt" } } }, // re-read
     ]);
     await invoke("set_input_calibration", new RewClient(), { calFilePath: "/mic.txt" });
     const put = calls.find((c) => c.method === "PUT");
     expect(new URL(put!.url).pathname).toBe("/audio/input-cal");
-    // Existing selection preserved, existing cal field kept, path merged in.
+    // Selection fields we don't author survive; the path is the only cal change.
     expect(put!.body).toEqual({
       currentInputSelection: "Default",
-      calDataAllInputs: { dBFSAt94dBSPL: -22.9, calFilePath: "/mic.txt" },
+      separateCalFileForEachInput: false,
+      calDataAllInputs: { calFilePath: "/mic.txt" },
     });
+  });
+
+  // REW rejects a PUT that sets dBFSAt94dBSPL for a USB mic — it derives that from
+  // the cal file — so a caller who only passes a path must not have the value they
+  // never mentioned echoed back at REW. Regression: this 400'd every UMIK.
+  it("does not re-send a sensitivity the caller never asked to change", async () => {
+    const { calls } = stubFetch([
+      { body: { calDataAllInputs: { dBFSAt94dBSPL: -22.9, fullScaleSineVrms: 1.1 } } },
+      {},
+      { body: {} },
+    ]);
+    await invoke("set_input_calibration", new RewClient(), { calFilePath: "/umik.txt" });
+    const put = calls.find((c) => c.method === "PUT");
+    expect(put!.body).toEqual({ calDataAllInputs: { calFilePath: "/umik.txt" } });
+  });
+
+  it("sends the sensitivity when the caller does supply one", async () => {
+    const { calls } = stubFetch([{ body: { calDataAllInputs: { dBFSAt94dBSPL: -22.9 } } }, {}, { body: {} }]);
+    await invoke("set_input_calibration", new RewClient(), {
+      calFilePath: "/mic.txt",
+      dBFSAt94dBSPL: -30,
+    });
+    const put = calls.find((c) => c.method === "PUT");
+    expect(put!.body).toEqual({ calDataAllInputs: { calFilePath: "/mic.txt", dBFSAt94dBSPL: -30 } });
   });
 
   it("clears the calibration when given an empty path", async () => {
