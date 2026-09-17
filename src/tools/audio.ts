@@ -109,7 +109,7 @@ export const audioTools = [
   defineTool({
     name: "set_input_calibration",
     description:
-      "Load or clear the microphone calibration file for the current input. Pass the cal file path (forward slashes) to load it, or an empty string to clear it. Optionally set the mic sensitivity (dBFS at 94 dB SPL) from the mic's cal sheet. Verifies with get_audio_config — this is how you ensure SPL readings are accurate before measuring.",
+      "Load or clear the microphone calibration file for the current input. Pass the cal file path (forward slashes) to load it, or an empty string to clear it. Optionally set the mic sensitivity (dBFS at 94 dB SPL) from the mic's cal sheet — omit it for USB mics (UMIK etc.), where REW derives sensitivity from the cal file itself and rejects setting it manually. Verifies with get_audio_config — this is how you ensure SPL readings are accurate before measuring.",
     inputSchema: {
       calFilePath: z
         .string()
@@ -124,8 +124,15 @@ export const audioTools = [
       // Round-trip the whole InputCalConfiguration so REW's read-only selection
       // fields survive; only the cal data changes. PUT is the sole write verb here.
       const config = await client.get("/audio/input-cal", inputCalSchema);
+      // [LAW:one-source-of-truth] The round-trip preserves fields we do not author;
+      // it must not re-assert ones we do. REW derives dBFSAt94dBSPL from the cal
+      // file's Sens Factor for USB mics and rejects any PUT that sets it, so
+      // echoing back the value we just read makes this tool a second writer of a
+      // fact REW owns — and breaks every UMIK-class mic. Send only what the caller
+      // actually asked to change.
+      const { dBFSAt94dBSPL: _, fullScaleSineVrms: __, ...preserved } = config.calDataAllInputs ?? {};
       const calData = {
-        ...(config.calDataAllInputs ?? {}),
+        ...preserved,
         calFilePath: args.calFilePath,
         ...(args.dBFSAt94dBSPL !== undefined ? { dBFSAt94dBSPL: args.dBFSAt94dBSPL } : {}),
         ...(args.fullScaleSineVrms !== undefined ? { fullScaleSineVrms: args.fullScaleSineVrms } : {}),
