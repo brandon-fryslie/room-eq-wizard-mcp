@@ -10,7 +10,7 @@ import { defineTool } from "./registry.js";
 import type { RewClient } from "../rew/client.js";
 import { spectrumSchema, unknownSchema, type Spectrum } from "../rew/types.js";
 import { decimateLog, summarizeSpectrum } from "../analysis/spectrum.js";
-import { measurementsCreatedBy, summarize } from "./shared.js";
+import { awaitMeasurementsCreatedBy, summarize } from "./shared.js";
 
 // KNOWN LANDMINE: RTA spectrum captures are linear-spaced from 0 Hz, so the wire
 // axis carries a 0 Hz bin. The pure analysis layer is log-based — decimateLog takes
@@ -195,18 +195,11 @@ export const rtaTools = [
         .describe("Which trace to save: 'current' (rms average), 'peak' (peak-hold), or 'both'"),
     },
     handler: async (client, args) => {
-      // Blocking command so the new measurement exists before the diff reads it.
-      const { created } = await measurementsCreatedBy(client, () =>
-        client.command("/rta/command", { command: RTA_SAVE_COMMANDS[args.which] }),
+      const { created } = await awaitMeasurementsCreatedBy(
+        client,
+        () => client.command("/rta/command", { command: RTA_SAVE_COMMANDS[args.which] }),
+        "the capture did not take — start the RTA and confirm it has data (get_rta_capture) before saving",
       );
-      if (created.length === 0) {
-        // [LAW:no-silent-failure] the whole point is a new measurement; if none
-        // appeared the capture did not take (RTA not started, or no data), and a
-        // success-shaped empty result would hide that.
-        throw new Error(
-          "RTA save produced no measurement — start the RTA and confirm it has data (get_rta_capture) before saving",
-        );
-      }
       return { savedCount: created.length, saved: created.map(summarize) };
     },
   }),

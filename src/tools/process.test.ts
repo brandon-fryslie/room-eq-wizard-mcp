@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { RewClient } from "../rew/client.js";
-import { stubFetch, type FetchCall } from "../rew/fetch-stub.js";
+import { stubFetch, type FetchCall, pollingClient } from "../rew/fetch-stub.js";
 import { allTools } from "./index.js";
 
 async function invoke(name: string, client: RewClient, args: Record<string, unknown> = {}) {
@@ -111,7 +111,7 @@ describe("generate_phase_version", () => {
       { body: { "1": { uuid: "m1" } } }, // after — unchanged
     ]);
     await expect(
-      invoke("generate_phase_version", new RewClient(), { measurement: "m1" }),
+      invoke("generate_phase_version", pollingClient(0), { measurement: "m1" }),
     ).rejects.toThrow(/produced no measurement/);
   });
 });

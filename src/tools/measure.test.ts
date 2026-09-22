@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { RewClient } from "../rew/client.js";
-import { stubFetch, stubFetchByPath, type FetchCall } from "../rew/fetch-stub.js";
+import { stubFetch, stubFetchByPath, type FetchCall, pollingClient, stubFetchWith } from "../rew/fetch-stub.js";
 import { allTools } from "./index.js";
 
 // [LAW:behavior-not-structure] assert the wire contract. The /measure write actions
@@ -145,6 +145,84 @@ describe("measure_impedance", () => {
       {}, // command
       { body: { "1": { uuid: "m1" } } }, // after unchanged
     ]);
-    await expect(invoke("measure_impedance", new RewClient())).rejects.toThrow(/no measurement/);
+    // A zero budget makes the waiter give up after its first look, so the test
+    // asserts the give-up behaviour without waiting out a real sweep's deadline.
+    await expect(invoke("measure_impedance", pollingClient(0))).rejects.toThrow(/impedance jig/);
+  });
+});
+
+describe("run_sweep", () => {
+  // The bug this suite exists for: REW answers /measure/command with 202 Accepted in
+  // ~50ms and sweeps on in the background — even with blocking mode enabled (verified
+  // live, REW 5.40 beta 132). A single post-command read therefore sees the PREVIOUS
+  // measurement, which run_sweep used to return as if it were the new one.
+  const seeded = { "1": { uuid: "old-1", title: "yesterday" } };
+  const seededPlusNew = { ...seeded, "2": { uuid: "new-1", title: "L sweep" } };
+
+  it("returns the measurement created by this call, never the one that was already there", async () => {
+    // The sweep lands only on the second poll, so a handler that reads once gets `seeded`.
+    let polls = 0;
+    stubFetchWith((path) => {
+      if (path !== "/measurements") return {};
+      polls += 1;
+      return { body: polls <= 2 ? seeded : seededPlusNew };
+    });
+    const result = (await invoke("run_sweep", pollingClient(1000))) as {
+      measurements: { uuid: string }[];
+    };
+    expect(result.measurements.map((m) => m.uuid)).toEqual(["new-1"]);
+  });
+
+  it("reports every measurement a Sequential/Repeated sweep created", async () => {
+    let reads = 0;
+    stubFetchWith((path) => {
+      if (path !== "/measurements") return {};
+      reads += 1;
+      return { body: reads === 1 ? seeded : { ...seeded, "2": { uuid: "L" }, "3": { uuid: "R" } } };
+    });
+    const result = (await invoke("run_sweep", pollingClient(1000))) as {
+      measurements: { uuid: string }[];
+    };
+    expect(result.measurements.map((m) => m.uuid)).toEqual(["L", "R"]);
+  });
+
+  it("errors instead of reporting success when the sweep produced nothing", async () => {
+    stubFetchWith((path) => (path === "/measurements" ? { body: seeded } : {}));
+    await expect(invoke("run_sweep", pollingClient(0))).rejects.toThrow(/No new measurement appeared/);
+  });
+
+  it("names the recovery path in the failure, not just the failure", async () => {
+    stubFetchWith((path) => (path === "/measurements" ? { body: seeded } : {}));
+    await expect(invoke("run_sweep", pollingClient(0))).rejects.toThrow(/get_diagnostics/);
+  });
+
+  it("configures the sweep before starting it", async () => {
+    let reads = 0;
+    const { calls } = stubFetchWith((path) => {
+      if (path !== "/measurements") return {};
+      reads += 1;
+      return { body: reads === 1 ? {} : { "1": { uuid: "s1" } } };
+    });
+    await invoke("run_sweep", pollingClient(1000), {
+      startFreqHz: 20,
+      endFreqHz: 300,
+      length: "512k",
+      levelDbfs: -12,
+    });
+    expect(postBody(calls, "/measure/sweep/configuration")).toEqual({
+      startFrequency: 20,
+      endFrequency: 300,
+      length: "512k",
+    });
+    expect(postBody(calls, "/measure/level")).toEqual({ value: -12, unit: "dBFS" });
+    expect(postBody(calls, "/measure/command")).toEqual({ command: "SPL" });
+  });
+
+  it("rejects an inverted frequency range before touching the wire", async () => {
+    const { calls } = stubFetch([{}]);
+    await expect(
+      invoke("run_sweep", new RewClient(), { startFreqHz: 200, endFreqHz: 100 }),
+    ).rejects.toThrow(/must be above/);
+    expect(calls).toHaveLength(0);
   });
 });

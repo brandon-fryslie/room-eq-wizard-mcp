@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { defineTool, measurementIdInput } from "./registry.js";
 import type { RewClient } from "../rew/client.js";
-import { measurementsCreatedBy, newestMeasurement, summarize } from "./shared.js";
+import { awaitMeasurementsCreatedBy, newestMeasurement, summarize } from "./shared.js";
 
 /** Run a process over measurement UUIDs/indices and report what it produced. */
 async function runProcess(
@@ -182,13 +182,12 @@ export const processTools = [
         "frequency warping": args.frequencyWarping,
         "replicate data": args.replicateData,
       };
-      const { created } = await measurementsCreatedBy(client, () =>
-        client.command(`/measurements/${encodeURIComponent(args.measurement)}/command`, { command, parameters }),
+      const { created } = await awaitMeasurementsCreatedBy(
+        client,
+        () =>
+          client.command(`/measurements/${encodeURIComponent(args.measurement)}/command`, { command, parameters }),
+        `${command} produced no measurement — the source needs a valid impulse response`,
       );
-      if (created.length === 0) {
-        // [LAW:no-silent-failure] the point is a new measurement; none means it failed.
-        throw new Error(`${command} produced no measurement — the source needs a valid impulse response`);
-      }
       return { command, measurement: summarize(created[created.length - 1]) };
     },
   }),

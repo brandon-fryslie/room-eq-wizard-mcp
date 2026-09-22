@@ -3,6 +3,17 @@
 // once here, not per test file.
 
 import { vi } from "vitest";
+import { RewClient } from "./client.js";
+
+/**
+ * A client that polls with no delay, so measurement-waiting tests run in
+ * milliseconds instead of waiting out the real 180s sweep budget. `budgetMs` is the
+ * whole variable: 0 buys exactly one look (asserting the give-up path), anything
+ * larger lets the poll loop turn (asserting that it waits).
+ * [LAW:no-ambient-temporal-coupling] the deadline is injected, never slept through.
+ */
+export const pollingClient = (budgetMs: number) =>
+  new RewClient({ commandTimeoutMs: budgetMs, measurementPollIntervalMs: 0 });
 
 export type FetchCall = { url: string; method: string; body: unknown };
 
@@ -35,6 +46,18 @@ function installRecordingFetch(
     }),
   );
   return { calls };
+}
+
+/**
+ * The general stub: you decide the response from the request's path and its index.
+ * For handlers whose answer must *change* over repeated reads of one endpoint —
+ * polling a measurement into existence — which neither by-order nor by-path can say.
+ * [LAW:composability] the primitive the other two stubs are already built from.
+ */
+export function stubFetchWith(
+  resolve: (path: string, callIndex: number) => CannedResponse | undefined,
+): { calls: FetchCall[] } {
+  return installRecordingFetch(resolve);
 }
 
 /** Install a fetch stub that records calls and replays canned responses in order. */

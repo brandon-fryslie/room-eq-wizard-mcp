@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { RewClient } from "../rew/client.js";
-import { stubFetch, type FetchCall } from "../rew/fetch-stub.js";
+import { stubFetch, type FetchCall, pollingClient } from "../rew/fetch-stub.js";
 import { encodeFloats } from "../rew/codec.js";
 import { allTools } from "./index.js";
 import { rtaSpectrumSchema } from "./rta.js";
@@ -239,7 +239,7 @@ describe("save_rta_capture", () => {
       {}, // command
       { body: { "1": { uuid: "m1" } } }, // after — unchanged
     ]);
-    await expect(invoke("save_rta_capture", new RewClient())).rejects.toThrow(/no measurement/);
+    await expect(invoke("save_rta_capture", pollingClient(0))).rejects.toThrow(/start the RTA/);
   });
 });
 
