@@ -163,12 +163,20 @@ describe.skipIf(!rewIsUp)("live REW", () => {
       const after = await client.get("/groups", groupListSchema);
       expect(after.map((g) => g.uuid)).not.toContain(created.uuid);
     } finally {
-      if (groupUuid !== undefined) await client.delete(`/groups/${groupUuid}`);
+      // Best-effort, and each step independent of the last: a cleanup failure must
+      // neither mask a real assertion error from the try block nor skip the cleanup
+      // that follows it — the convention this file already uses everywhere else.
+      if (groupUuid !== undefined) await client.delete(`/groups/${groupUuid}`).catch(() => {});
       // [LAW:one-source-of-truth] the unique name is this test's handle on what it
       // created, and unlike the uuid it exists even when the import assertion fires
-      // before REW published — so nothing is ever orphaned in a live tuning session.
-      for (const m of Object.values(await client.get("/measurements", measurementListSchema))) {
-        if (m.title === sourceName) await client.delete(`/measurements/${m.uuid}`);
+      // before REW published — so the source measurement is not left behind in a
+      // live tuning session. REW echoes the identifier an import sends as the new
+      // measurement's title; verified live against REW 5.40 beta 132.
+      const after = await client
+        .get("/measurements", measurementListSchema)
+        .catch(() => ({}) as Record<string, { uuid: string; title?: string }>);
+      for (const m of Object.values(after)) {
+        if (m.title === sourceName) await client.delete(`/measurements/${m.uuid}`).catch(() => {});
       }
     }
   });
