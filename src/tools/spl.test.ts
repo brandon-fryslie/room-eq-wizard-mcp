@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { RewClient } from "../rew/client.js";
-import { stubFetch, type FetchCall } from "../rew/fetch-stub.js";
+import { stubFetch, stubFetchByPath, type FetchCall } from "../rew/fetch-stub.js";
 import { allTools } from "./index.js";
 
 async function invoke(name: string, client: RewClient, args: Record<string, unknown> = {}) {
@@ -58,5 +58,58 @@ describe("spl_meter_config", () => {
     expect(calls.every((c) => c.method === "GET")).toBe(true);
     expect(new URL(calls[0].url).pathname).toBe("/spl-meter/2/configuration");
     expect(result).toEqual({ showSPL: true });
+  });
+});
+
+describe("read_spl wire contract", () => {
+  const levels = (over = {}) => ({
+    meterNumber: 1,
+    splWeighting: "C",
+    filter: "Slow",
+    spl: 74.2,
+    ...over,
+  });
+
+  it("sends REW's real field names, not mode/weighting", async () => {
+    // REW merges partial config and answers "Configuration processed" while dropping
+    // keys it does not know, so a wrong name here is silent — hence this assertion.
+    const { calls } = stubFetchByPath({
+      "/spl-meter/1/configuration": { body: {} },
+      "/spl-meter/1/command": { body: {} },
+      "/spl-meter/1/levels": { body: levels() },
+    });
+    await invoke("read_spl", new RewClient(), { weighting: "C", filter: "Slow", settleSeconds: 0 });
+    const cfg = calls.find(
+      (c) => c.method === "POST" && new URL(c.url).pathname === "/spl-meter/1/configuration",
+    )?.body as Record<string, unknown>;
+    expect(cfg).toEqual({ showSPL: true, splWeighting: "C", filter: "Slow" });
+    expect(cfg).not.toHaveProperty("mode");
+    expect(cfg).not.toHaveProperty("weighting");
+  });
+
+  it("errors when the meter read a different weighting than was asked for", async () => {
+    stubFetchByPath({
+      "/spl-meter/1/configuration": { body: {} },
+      "/spl-meter/1/command": { body: {} },
+      "/spl-meter/1/levels": { body: levels({ splWeighting: "A" }) },
+    });
+    await expect(
+      invoke("read_spl", new RewClient(), { weighting: "C", settleSeconds: 0 }),
+    ).rejects.toThrow(/Asked for C-weighting but the meter read A/);
+  });
+
+  it("reports a level REW could not compute as null, not as a number", async () => {
+    // A running meter with no signal sends bare NaN; null keeps "no reading" testable.
+    stubFetchByPath({
+      "/spl-meter/1/configuration": { body: {} },
+      "/spl-meter/1/command": { body: {} },
+      "/spl-meter/1/levels": { body: levels({ spl: null, leq: null }) },
+    });
+    const r = (await invoke("read_spl", new RewClient(), {
+      weighting: "C",
+      settleSeconds: 0,
+    })) as Record<string, unknown>;
+    expect(r.spl).toBeNull();
+    expect(r.splWeighting).toBe("C");
   });
 });

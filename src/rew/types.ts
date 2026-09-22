@@ -108,13 +108,31 @@ export const noDataMessageSchema = z.looseObject({ message: z.string() });
  */
 export const impulseResponseOrMessageSchema = z.union([impulseResponseSchema, noDataMessageSchema]);
 
+// A level REW could not compute arrives as a bare NaN and is normalised to null by
+// parseRewJson, so every level field is nullable: null means "no reading", which a
+// consumer can test. [LAW:parse-dont-validate] absence stays distinguishable from a
+// number — the trap here is -180, which REW reports for a stopped meter and which
+// reads like an extremely quiet room rather than the sentinel it is.
+const levelDb = z.number().nullable().optional();
+
+// Field names verified live against REW 5.40 beta 132 /spl-meter/N/levels. There is
+// no plain `weighting` on the wire; a schema that declares one silently never fills
+// it, because this is a looseObject. [LAW:one-source-of-truth] the wire is the map.
 export const splValuesSchema = z.looseObject({
   meterNumber: z.number().optional(),
-  weighting: z.string().optional(),
+  splWeighting: z.string().optional(),
+  leqWeighting: z.string().optional(),
+  selWeighting: z.string().optional(),
   filter: z.string().optional(),
-  spl: z.number().optional(),
-  leq: z.number().optional(),
-  sel: z.number().optional(),
+  spl: levelDb,
+  leq: levelDb,
+  sel: levelDb,
+  leq1m: levelDb,
+  leq10m: levelDb,
+  lcPeak: levelDb,
+  lzPeak: levelDb,
+  isRollingLeq: z.boolean().optional(),
+  rollingLeqMinutes: z.number().optional(),
   elapsedTime: z.number().optional(),
 });
 export type SplValues = z.output<typeof splValuesSchema>;

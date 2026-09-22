@@ -33,9 +33,14 @@ export const splTools = [
     },
     handler: async (client, args) => {
       const meter = `/spl-meter/${args.meterNumber}`;
+      // Wire field names, verified live: showSPL/splWeighting, NOT mode/weighting.
+      // REW merges a partial POST and answers "Configuration processed" while
+      // silently dropping keys it does not know, so a wrong name here is invisible —
+      // which is exactly how this tool spent its life reading A-weighted levels
+      // while reporting the C the caller asked for.
       await client.post(`${meter}/configuration`, {
-        mode: "SPL",
-        weighting: args.weighting,
+        showSPL: true,
+        splWeighting: args.weighting,
         filter: args.filter,
       });
       await client.post(`${meter}/command`, { command: "Start" });
@@ -45,6 +50,17 @@ export const splTools = [
       const levels = await client.get(`${meter}/levels`, splValuesSchema);
       if (args.stopAfter) {
         await client.post(`${meter}/command`, { command: "Stop" });
+      }
+      // The reading reports the weighting it was actually taken with, so the request
+      // is checked against the result for free. [LAW:no-silent-failure] REW drops
+      // unknown config keys without complaint; this is what turns that silence into
+      // an error instead of a mislabelled number. A REW that does not report the
+      // weighting at all leaves nothing to contradict, so nothing is claimed.
+      if (levels.splWeighting !== undefined && levels.splWeighting !== args.weighting) {
+        throw new Error(
+          `Asked for ${args.weighting}-weighting but the meter read ${levels.splWeighting} — ` +
+            `REW did not accept the configuration, so this level is not the one you asked for`,
+        );
       }
       return levels;
     },
