@@ -101,11 +101,23 @@ export async function resolveUuid(client: RewClient, measurement: string): Promi
 }
 
 /**
+ * Snapshot the measurement list; the returned function reports which measurements
+ * have appeared since. [LAW:one-source-of-truth] measurement identity is decided
+ * here and nowhere else — both diffing callers below differ only in how often they
+ * ask, never in what counts as new.
+ */
+async function measurementsAppearedSince(
+  client: RewClient,
+): Promise<() => Promise<IndexedMeasurement[]>> {
+  const before = new Set((await listMeasurements(client)).map((m) => m.uuid));
+  return async () => (await listMeasurements(client)).filter((m) => !before.has(m.uuid));
+}
+
+/**
  * Run an action that may make REW create measurements and report exactly the ones
- * that appeared, by diffing the measurement list. For commands REW completes before
- * replying, and whose result may legitimately be no new measurement at all (an EQ
- * command that only rewrites filters, an import of an empty file).
- * [LAW:one-source-of-truth] the before/after diff lives once here.
+ * that appeared. For commands REW completes before replying, and whose result may
+ * legitimately be no new measurement at all (an EQ command that only rewrites
+ * filters, an import of an empty file).
  *
  * When the caller requires a measurement, use {@link awaitMeasurementsCreatedBy}:
  * this one reads the list once and cannot see a measurement REW has not made yet.
@@ -114,10 +126,9 @@ export async function measurementsCreatedBy<T>(
   client: RewClient,
   action: () => Promise<T>,
 ): Promise<{ result: T; created: IndexedMeasurement[] }> {
-  const before = new Set((await listMeasurements(client)).map((m) => m.uuid));
+  const appeared = await measurementsAppearedSince(client);
   const result = await action();
-  const created = (await listMeasurements(client)).filter((m) => !before.has(m.uuid));
-  return { result, created };
+  return { result, created: await appeared() };
 }
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -158,7 +169,7 @@ export async function awaitMeasurementsCreatedBy<T>(
   action: () => Promise<T>,
   failureHint: string,
 ): Promise<{ result: T; created: [IndexedMeasurement, ...IndexedMeasurement[]] }> {
-  const before = new Set((await listMeasurements(client)).map((m) => m.uuid));
+  const appeared = await measurementsAppearedSince(client);
   // Before the action, not after: the wait and the request share one budget, so a
   // command that nearly exhausts commandTimeoutMs before answering cannot then buy a
   // second full window of polling. [LAW:one-source-of-truth] one deadline, as
@@ -168,7 +179,7 @@ export async function awaitMeasurementsCreatedBy<T>(
   const result = await action();
   for (;;) {
     // Read before sleeping: a command REW *did* finish synchronously costs no delay.
-    const [first, ...rest] = (await listMeasurements(client)).filter((m) => !before.has(m.uuid));
+    const [first, ...rest] = await appeared();
     if (first !== undefined) return { result, created: [first, ...rest] };
     if (Date.now() >= deadline) {
       throw new Error(
