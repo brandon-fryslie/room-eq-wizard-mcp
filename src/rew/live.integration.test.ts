@@ -92,12 +92,15 @@ describe.skipIf(!rewIsUp)("live REW", () => {
       const result = (await tool("import_frequency_response")({ filePath }).catch(
         (error: unknown) => {
           // [LAW:no-silent-failure] exactly one answer means REW is not on this
-          // filesystem: a 400 saying it cannot find the file we just wrote. The skip
-          // names it. Every other failure rethrows rather than being laundered into
-          // a green-looking skip.
+          // filesystem: REW naming *this test's own file* as one it cannot find. The
+          // basename rather than the full path, so a macOS-local REW canonicalising
+          // /var/folders to /private/var/folders still reads as the same answer; the
+          // filename rather than the status, because the message is the evidence and
+          // which code REW picks for it is incidental. Every other failure rethrows
+          // rather than being laundered into a green-looking skip.
           if (
             error instanceof RewApiError &&
-            error.status === 400 &&
+            error.message.includes("live-import-fr.txt") &&
             error.message.includes("cannot be found")
           ) {
             ctx.skip(`REW cannot read ${filePath} — it is not running on this filesystem`);
@@ -126,11 +129,11 @@ describe.skipIf(!rewIsUp)("live REW", () => {
   // test has no business depending on REW and the runner sharing a filesystem.
   it("creates, fills, renames, and deletes a measurement group", async () => {
     const groupName = `live-suite-${Date.now()}`;
+    const sourceName = `${groupName}-source`;
     let groupUuid: string | undefined;
-    let measurementUuid: string | undefined;
     try {
       const imported = (await tool("import_frequency_response_data")({
-        name: `${groupName}-source`,
+        name: sourceName,
         startFreqHz: 20,
         pointsPerOctave: 3,
         magnitude: Array.from({ length: 31 }, () => 75),
@@ -138,7 +141,7 @@ describe.skipIf(!rewIsUp)("live REW", () => {
       // runImport reads the measurement list once, so an import REW answered before
       // publishing yields an empty array — say that, rather than dying on [0].uuid.
       expect(imported.imported.length).toBeGreaterThan(0);
-      measurementUuid = imported.imported[0].uuid;
+      const measurementUuid = imported.imported[0].uuid;
 
       const created = (await client.post("/groups", { name: groupName })) as { uuid: string };
       groupUuid = created.uuid;
@@ -161,7 +164,12 @@ describe.skipIf(!rewIsUp)("live REW", () => {
       expect(after.map((g) => g.uuid)).not.toContain(created.uuid);
     } finally {
       if (groupUuid !== undefined) await client.delete(`/groups/${groupUuid}`);
-      if (measurementUuid !== undefined) await client.delete(`/measurements/${measurementUuid}`);
+      // [LAW:one-source-of-truth] the unique name is this test's handle on what it
+      // created, and unlike the uuid it exists even when the import assertion fires
+      // before REW published — so nothing is ever orphaned in a live tuning session.
+      for (const m of Object.values(await client.get("/measurements", measurementListSchema))) {
+        if (m.title === sourceName) await client.delete(`/measurements/${m.uuid}`);
+      }
     }
   });
 
