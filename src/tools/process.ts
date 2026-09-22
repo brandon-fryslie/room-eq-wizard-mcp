@@ -102,8 +102,12 @@ export const processTools = [
     inputSchema: {
       measurement: measurementIdInput,
       smoothing: z
-        .enum(["1/1", "1/2", "1/3", "1/6", "1/12", "1/24", "1/48", "Variable", "Psychoacoustic", "ERB", "None"])
-        .describe("Smoothing to apply"),
+        .enum(["1/1", "1/2", "1/3", "1/6", "1/12", "1/24", "1/48", "Var", "Psy", "ERB", "None"])
+        .describe(
+          "Smoothing to apply. REW's own spellings: 'Var' is variable smoothing " +
+            "(1/48 below 100 Hz widening to 1/3 above 10 kHz), 'Psy' is psychoacoustic. " +
+            "The long forms 'Variable'/'Psychoacoustic' are rejected by REW.",
+        ),
     },
     handler: async (client, args) => {
       await client.command(`/measurements/${encodeURIComponent(args.measurement)}/command`, {

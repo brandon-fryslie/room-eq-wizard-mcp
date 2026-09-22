@@ -18,7 +18,11 @@ const groupDelayOrMessageSchema = z.union([spectrumSchema, noDataMessageSchema])
 const smoothingInput = z
   .string()
   .optional()
-  .describe("REW smoothing, e.g. '1/6', '1/12', 'Variable', 'None' (default: the measurement's current smoothing)");
+  .describe(
+    "REW smoothing: 1/1, 1/2, 1/3, 1/6, 1/12, 1/24, 1/48, Var (variable), Psy " +
+      "(psychoacoustic), ERB, or None. Defaults to the measurement's current smoothing. " +
+      "Note 'Var'/'Psy', not 'Variable'/'Psychoacoustic' — REW rejects the long forms.",
+  );
 
 export const dataTools = [
   defineTool({

@@ -115,3 +115,35 @@ describe("generate_phase_version", () => {
     ).rejects.toThrow(/produced no measurement/);
   });
 });
+
+describe("smooth_measurement", () => {
+  // REW answers a bad value with 400 and its own validValues list; that list is
+  // ['1/1','1/2','1/3','1/6','1/12','1/24','1/48','Var','Psy','ERB','None'] on
+  // API 0.9.6 — verified live, and the reason the long spellings are gone.
+  it("sends Var, nested under parameters, for variable smoothing", async () => {
+    const { calls } = stubFetch([{}, {}]);
+    await invoke("smooth_measurement", new RewClient(), { measurement: "m1", smoothing: "Var" });
+    expect(bodyAt(calls, "/measurements/m1/command")).toEqual({
+      command: "Smooth",
+      parameters: { smoothing: "Var" },
+    });
+  });
+
+  it("sends Psy for psychoacoustic smoothing", async () => {
+    const { calls } = stubFetch([{}, {}]);
+    await invoke("smooth_measurement", new RewClient(), { measurement: "m1", smoothing: "Psy" });
+    expect(bodyAt(calls, "/measurements/m1/command")).toEqual({
+      command: "Smooth",
+      parameters: { smoothing: "Psy" },
+    });
+  });
+
+  it("rejects the long spellings REW answers 400 for", async () => {
+    stubFetch([{}, {}]);
+    for (const dead of ["Variable", "Psychoacoustic"]) {
+      await expect(
+        invoke("smooth_measurement", new RewClient(), { measurement: "m1", smoothing: dead }),
+      ).rejects.toThrow();
+    }
+  });
+});
