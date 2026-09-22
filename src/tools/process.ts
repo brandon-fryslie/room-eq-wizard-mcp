@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SMOOTHING_VALUES } from "../rew/types.js";
 import { defineTool, measurementIdInput } from "./registry.js";
 import type { RewClient } from "../rew/client.js";
 import { awaitMeasurementsCreatedBy, newestMeasurement, summarize } from "./shared.js";
@@ -102,7 +103,7 @@ export const processTools = [
     inputSchema: {
       measurement: measurementIdInput,
       smoothing: z
-        .enum(["1/1", "1/2", "1/3", "1/6", "1/12", "1/24", "1/48", "Var", "Psy", "ERB", "None"])
+        .enum(SMOOTHING_VALUES)
         .describe(
           "Smoothing to apply. REW's own spellings: 'Var' is variable smoothing " +
             "(1/48 below 100 Hz widening to 1/3 above 10 kHz), 'Psy' is psychoacoustic. " +

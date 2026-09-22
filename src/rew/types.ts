@@ -118,6 +118,25 @@ const levelDb = z.number().nullable().optional();
 // Field names verified live against REW 5.40 beta 132 /spl-meter/N/levels. There is
 // no plain `weighting` on the wire; a schema that declares one silently never fills
 // it, because this is a looseObject. [LAW:one-source-of-truth] the wire is the map.
+// REW's smoothing vocabulary, exactly as REW reports it in the validValues of a
+// 400 for a bad value (API 0.9.6). [LAW:one-source-of-truth] every tool that names
+// a smoothing spells it from here, so the long forms REW rejects cannot creep back.
+// Note 'None' is accepted by the Smooth command but silently becomes 1/48 on the
+// frequency-response endpoint, which has no unsmoothed log-spaced form.
+export const SMOOTHING_VALUES = [
+  "1/1",
+  "1/2",
+  "1/3",
+  "1/6",
+  "1/12",
+  "1/24",
+  "1/48",
+  "Var",
+  "Psy",
+  "ERB",
+  "None",
+] as const;
+
 export const splValuesSchema = z.looseObject({
   meterNumber: z.number().optional(),
   splWeighting: z.string().optional(),
