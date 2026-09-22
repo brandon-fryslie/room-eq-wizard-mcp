@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decodeFloats, encodeFloats } from "./codec.js";
+import { decodeFloats, encodeFloats, parseRewJson } from "./codec.js";
 
 describe("codec", () => {
   // Validation vector published in REW's own API documentation.
@@ -27,5 +27,32 @@ describe("codec", () => {
     // 1.0f big-endian is 3F 80 00 00; little-endian misread would give 4.6e-41.
     const one = Buffer.from([0x3f, 0x80, 0x00, 0x00]).toString("base64");
     expect(decodeFloats(one)[0]).toBe(1);
+  });
+});
+
+describe("parseRewJson", () => {
+  // REW writes Java's non-finite literals bare; JSON.parse rejects all three.
+  it("turns NaN and infinities into null so a payload carrying them still parses", () => {
+    expect(parseRewJson('{"spl": NaN, "hi": Infinity, "lo": -Infinity}')).toEqual({
+      spl: null,
+      hi: null,
+      lo: null,
+    });
+  });
+
+  it("leaves NaN inside a string value alone", () => {
+    // The trap a naive replace falls into: only bare tokens are literals.
+    expect(parseRewJson('{"title": "NaN and Infinity", "spl": NaN}')).toEqual({
+      title: "NaN and Infinity",
+      spl: null,
+    });
+  });
+
+  it("does not disturb an escaped quote before a bare literal", () => {
+    expect(parseRewJson('{"t": "say \\"NaN\\"", "v": NaN}')).toEqual({ t: 'say "NaN"', v: null });
+  });
+
+  it("parses ordinary payloads unchanged", () => {
+    expect(parseRewJson('{"a":1,"b":[1,2],"c":"x"}')).toEqual({ a: 1, b: [1, 2], c: "x" });
   });
 });

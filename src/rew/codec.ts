@@ -25,3 +25,22 @@ export function encodeFloats(values: ArrayLike<number>): string {
   for (let i = 0; i < values.length; i++) bytes.writeFloatBE(values[i], i * 4);
   return bytes.toString("base64");
 }
+
+/**
+ * Parse a REW JSON payload, which is not quite JSON: REW writes Java's `NaN`,
+ * `Infinity` and `-Infinity` as bare literals, and JSON.parse rejects all three.
+ * A running SPL meter with no signal answers `"spl": NaN` — verified live against
+ * REW 5.40 beta 132 — so read_spl used to die on the raw text with a Zod
+ * "expected object, received string", exactly when a user is asking why there is
+ * no signal.
+ *
+ * Non-finite becomes null: "there is no reading" said in a way a consumer can
+ * test, rather than a number standing in for absence. [LAW:parse-dont-validate]
+ * the dialect is normalised once, here, so nothing downstream meets a bare NaN.
+ */
+export function parseRewJson(text: string): unknown {
+  // The alternation consumes whole strings first, so a "NaN" inside a string value
+  // is matched as part of that string and returned untouched; only bare tokens in
+  // value position reach the capture group.
+  return JSON.parse(text.replace(/"(?:[^"\\]|\\.)*"|(-?Infinity|NaN)/g, (m, bare) => (bare ? "null" : m)));
+}

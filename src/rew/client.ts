@@ -5,6 +5,7 @@
 // dance in five separate tools; that duplication is what this class exists to prevent.
 
 import type { z } from "zod";
+import { parseRewJson } from "./codec.js";
 
 export class RewApiError extends Error {
   constructor(
@@ -92,7 +93,7 @@ export class RewClient {
     }
     if (text === "") return undefined;
     try {
-      return JSON.parse(text);
+      return parseRewJson(text);
     } catch {
       return text; // some endpoints answer with a bare string
     }
