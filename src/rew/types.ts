@@ -108,13 +108,50 @@ export const noDataMessageSchema = z.looseObject({ message: z.string() });
  */
 export const impulseResponseOrMessageSchema = z.union([impulseResponseSchema, noDataMessageSchema]);
 
+// A level REW could not compute arrives as a bare NaN and is normalised to null by
+// parseRewJson, so every level field is nullable: null means "no reading", which a
+// consumer can test. [LAW:parse-dont-validate] absence stays distinguishable from a
+// number — the trap here is -180, which REW reports for a stopped meter and which
+// reads like an extremely quiet room rather than the sentinel it is.
+const levelDb = z.number().nullable().optional();
+
+// Field names verified live against REW 5.40 beta 132 /spl-meter/N/levels. There is
+// no plain `weighting` on the wire; a schema that declares one silently never fills
+// it, because this is a looseObject. [LAW:one-source-of-truth] the wire is the map.
+// REW's smoothing vocabulary, exactly as REW reports it in the validValues of a
+// 400 for a bad value (API 0.9.6). [LAW:one-source-of-truth] every tool that names
+// a smoothing spells it from here, so the long forms REW rejects cannot creep back.
+// Note 'None' is accepted by the Smooth command but silently becomes 1/48 on the
+// frequency-response endpoint, which has no unsmoothed log-spaced form.
+export const SMOOTHING_VALUES = [
+  "1/1",
+  "1/2",
+  "1/3",
+  "1/6",
+  "1/12",
+  "1/24",
+  "1/48",
+  "Var",
+  "Psy",
+  "ERB",
+  "None",
+] as const;
+
 export const splValuesSchema = z.looseObject({
   meterNumber: z.number().optional(),
-  weighting: z.string().optional(),
+  splWeighting: z.string().optional(),
+  leqWeighting: z.string().optional(),
+  selWeighting: z.string().optional(),
   filter: z.string().optional(),
-  spl: z.number().optional(),
-  leq: z.number().optional(),
-  sel: z.number().optional(),
+  spl: levelDb,
+  leq: levelDb,
+  sel: levelDb,
+  leq1m: levelDb,
+  leq10m: levelDb,
+  lcPeak: levelDb,
+  lzPeak: levelDb,
+  isRollingLeq: z.boolean().optional(),
+  rollingLeqMinutes: z.number().optional(),
   elapsedTime: z.number().optional(),
 });
 export type SplValues = z.output<typeof splValuesSchema>;
@@ -170,5 +207,16 @@ export const groupMeasurementsSchema = arrayOrIndexed(measurementSummarySchema);
 /** For endpoints whose payload we relay verbatim (command lists, errors, process results). */
 export const unknownSchema = z.unknown();
 
-/** Scalar endpoints (e.g. /alignment-tool/delay-b) answer a bare number or its string form. */
-export const wireNumberSchema = z.coerce.number();
+/**
+ * Scalar endpoints (e.g. /alignment-tool/delay-b) answer a bare number or its
+ * string form. The union is the gate, not decoration: parseRewJson turns REW's
+ * bare `NaN` into `null`, and `z.coerce.number()` alone would coerce that null to
+ * `Number(null) === 0` — a silent, plausible "0 ms delay" standing in for "REW
+ * could not compute this". null matches neither arm and fails loudly instead.
+ * [LAW:no-silent-failure] [LAW:parse-dont-validate] a value that survives this is
+ * a real, finite reading; nothing downstream re-checks.
+ */
+export const wireNumberSchema = z
+  .union([z.number(), z.string()])
+  .transform(Number)
+  .refine(Number.isFinite, { message: "REW answered a value it could not compute" });

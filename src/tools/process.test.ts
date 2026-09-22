@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { RewClient } from "../rew/client.js";
-import { stubFetch, type FetchCall } from "../rew/fetch-stub.js";
+import { stubFetch, type FetchCall, pollingClient } from "../rew/fetch-stub.js";
 import { allTools } from "./index.js";
 
 async function invoke(name: string, client: RewClient, args: Record<string, unknown> = {}) {
@@ -111,7 +111,42 @@ describe("generate_phase_version", () => {
       { body: { "1": { uuid: "m1" } } }, // after — unchanged
     ]);
     await expect(
-      invoke("generate_phase_version", new RewClient(), { measurement: "m1" }),
+      invoke("generate_phase_version", pollingClient(0), { measurement: "m1" }),
     ).rejects.toThrow(/produced no measurement/);
+  });
+});
+
+describe("smooth_measurement", () => {
+  // The wire assertions below pin the strings REW actually accepts; REW's own
+  // validValues list (verified live on API 0.9.6) is recorded in the commit and the
+  // ticket, which is where the evidence for the enum belongs.
+  it("sends Var, nested under parameters, for variable smoothing", async () => {
+    const { calls } = stubFetch([{}, {}]);
+    await invoke("smooth_measurement", new RewClient(), { measurement: "m1", smoothing: "Var" });
+    expect(bodyAt(calls, "/measurements/m1/command")).toEqual({
+      command: "Smooth",
+      parameters: { smoothing: "Var" },
+    });
+  });
+
+  it("sends Psy for psychoacoustic smoothing", async () => {
+    const { calls } = stubFetch([{}, {}]);
+    await invoke("smooth_measurement", new RewClient(), { measurement: "m1", smoothing: "Psy" });
+    expect(bodyAt(calls, "/measurements/m1/command")).toEqual({
+      command: "Smooth",
+      parameters: { smoothing: "Psy" },
+    });
+  });
+
+  it("rejects the long spellings at the schema, before any wire call", async () => {
+    // invoke() parses through the tool's input schema first, so these never reach
+    // the stub — which is the point: the enum is what stops them, not REW's 400.
+    const { calls } = stubFetch([{}, {}]);
+    for (const dead of ["Variable", "Psychoacoustic"]) {
+      await expect(
+        invoke("smooth_measurement", new RewClient(), { measurement: "m1", smoothing: dead }),
+      ).rejects.toThrow();
+    }
+    expect(calls).toHaveLength(0);
   });
 });

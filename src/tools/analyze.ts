@@ -3,6 +3,7 @@ import { defineTool, measurementIdInput } from "./registry.js";
 import { decimateLog, diffSpectra, summarizeSpectrum } from "../analysis/spectrum.js";
 import { correlateModes, roomModes, schroederFrequency } from "../analysis/room-modes.js";
 import { fetchSpectrum } from "./shared.js";
+import { SMOOTHING_VALUES } from "../rew/types.js";
 
 const dimensionsInput = {
   lengthM: z.number().positive().describe("Room length in metres"),
@@ -14,7 +15,7 @@ export const analyzeTools = [
   defineTool({
     name: "analyze_response",
     description:
-      "Interpret a measurement's frequency response: per-band levels, flatness, and detected peaks and nulls with frequency, deviation, Q, and severity. The primary tool for answering 'what is wrong with this response?'",
+      "Interpret a measurement's frequency response: per-band levels, flatness, and detected peaks and nulls with frequency, deviation, Q, and severity. The primary tool for answering 'what is wrong with this response?' Analyses the curve at the smoothing you pass (default 1/12), independently of the smoothing the measurement is displaying — widen it if the detector is reporting narrow features you do not believe.",
     inputSchema: {
       measurement: measurementIdInput,
       windowOctaves: z
@@ -29,17 +30,30 @@ export const analyzeTools = [
         .max(20)
         .default(3)
         .describe("Smallest |deviation| in dB reported as a peak or null"),
+      smoothing: z
+        .enum(SMOOTHING_VALUES)
+        .default("1/12")
+        .describe(
+          "Smoothing the analysis runs on. 1/12 keeps modal features while suppressing " +
+            "measurement grass; widen (1/6, 1/3) to stop the detector inventing narrow " +
+            "peaks, narrow (1/24, 1/48) to resolve close modes.",
+        ),
     },
     handler: async (client, args) => {
-      // 1/12 smoothing keeps modal features while suppressing measurement grass.
+      // The analysed smoothing is the caller's, not the measurement's display state —
+      // so this answers the same way whatever the GUI happens to be showing.
       const spectrum = await fetchSpectrum(client, args.measurement, {
         ppo: 96,
-        smoothing: "1/12",
+        smoothing: args.smoothing,
       });
-      return summarizeSpectrum(spectrum.freqsHz, spectrum.magDb, {
-        windowOctaves: args.windowOctaves,
-        minDeviationDb: args.minDeviationDb,
-      });
+      return {
+        // Report what was analysed: two runs that disagree should say why.
+        smoothing: spectrum.smoothing ?? args.smoothing,
+        ...summarizeSpectrum(spectrum.freqsHz, spectrum.magDb, {
+          windowOctaves: args.windowOctaves,
+          minDeviationDb: args.minDeviationDb,
+        }),
+      };
     },
   }),
   defineTool({

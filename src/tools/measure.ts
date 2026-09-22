@@ -2,7 +2,7 @@ import { z } from "zod";
 import { defineTool } from "./registry.js";
 import type { RewClient } from "../rew/client.js";
 import { unknownSchema } from "../rew/types.js";
-import { measurementsCreatedBy, newestMeasurement, summarize } from "./shared.js";
+import { awaitMeasurementsCreatedBy, summarize } from "./shared.js";
 
 // One preflight read of the measurement session's settings — every field
 // configure_measurement can write is read back here, so get_measure_config is a
@@ -73,7 +73,7 @@ export const measureTools = [
   defineTool({
     name: "run_sweep",
     description:
-      "Configure and run a swept-sine SPL measurement. Requires REW's audio input/output to be configured and a REW Pro license for API-triggered measurement. Blocks until the sweep completes and returns the new measurement.",
+      "Configure and run a swept-sine SPL measurement. Requires REW's audio input/output to be configured and a REW Pro license for API-triggered measurement. Waits until the sweep has produced a measurement and returns what this call created, newest last; errors if it produced none. In Sequential/Repeated mode it can return once the first channel has landed \u2014 REW exposes no way to observe the whole run finishing \u2014 so read the list back if you need every channel.",
     inputSchema: {
       startFreqHz: z.number().min(1).default(20).describe("Sweep start frequency, Hz"),
       endFreqHz: z.number().min(10).default(20000).describe("Sweep end frequency, Hz"),
@@ -107,12 +107,15 @@ export const measureTools = [
       if (args.levelDbfs !== undefined) {
         await client.post("/measure/level", { value: args.levelDbfs, unit: "dBFS" });
       }
-      await client.command("/measure/command", { command: "SPL" });
-      const created = await newestMeasurement(client);
-      return {
-        completed: true,
-        measurement: created !== null ? summarize(created) : null,
-      };
+      const { created } = await awaitMeasurementsCreatedBy(
+        client,
+        () => client.command("/measure/command", { command: "SPL" }),
+        "check the mic is connected and REW's input is selected (get_audio_config), " +
+          "then read get_diagnostics — REW logs sweep failures there",
+      );
+      // Whatever this call created, newest last; see awaitMeasurementsCreatedBy
+      // for why Sequential/Repeated can report only the first channel.
+      return { measurements: created.map(summarize) };
     },
   }),
   defineTool({
@@ -234,15 +237,12 @@ export const measureTools = [
         const result = await client.command("/measure/command", { command });
         return { step: args.step, result: result ?? `${command} completed` };
       }
-      const { created } = await measurementsCreatedBy(client, () =>
-        client.command("/measure/command", { command }),
+      // Same /measure/command async path as run_sweep: 202 Accepted, effect later.
+      const { created } = await awaitMeasurementsCreatedBy(
+        client,
+        () => client.command("/measure/command", { command }),
+        "check the impedance jig and calibration",
       );
-      if (created.length === 0) {
-        // [LAW:no-silent-failure] an impedance measurement must produce a measurement.
-        throw new Error(
-          "impedance measurement produced no measurement — check the impedance jig and calibration",
-        );
-      }
       return { step: "measure", measurement: summarize(created[created.length - 1]) };
     },
   }),

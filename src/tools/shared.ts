@@ -101,20 +101,93 @@ export async function resolveUuid(client: RewClient, measurement: string): Promi
 }
 
 /**
- * Run an action that makes REW create measurements (load, import, sweep) and
- * report exactly the ones that appeared, by diffing the measurement list.
- * [LAW:one-source-of-truth] the before/after diff lives once here; with the
- * client in blocking mode the action's HTTP response arrives only after the
- * measurements exist, so the diff is race-free.
+ * Snapshot the measurement list; the returned function reports which measurements
+ * have appeared since. [LAW:one-source-of-truth] measurement identity is decided
+ * here and nowhere else — both diffing callers below differ only in how often they
+ * ask, never in what counts as new.
+ */
+async function measurementsAppearedSince(
+  client: RewClient,
+): Promise<() => Promise<IndexedMeasurement[]>> {
+  const before = new Set((await listMeasurements(client)).map((m) => m.uuid));
+  return async () => (await listMeasurements(client)).filter((m) => !before.has(m.uuid));
+}
+
+/**
+ * Run an action that may make REW create measurements and report exactly the ones
+ * that appeared. For commands REW completes before replying, and whose result may
+ * legitimately be no new measurement at all (an EQ command that only rewrites
+ * filters, an import of an empty file).
+ *
+ * When the caller requires a measurement, use {@link awaitMeasurementsCreatedBy}:
+ * this one reads the list once and cannot see a measurement REW has not made yet.
  */
 export async function measurementsCreatedBy<T>(
   client: RewClient,
   action: () => Promise<T>,
 ): Promise<{ result: T; created: IndexedMeasurement[] }> {
-  const before = new Set((await listMeasurements(client)).map((m) => m.uuid));
+  const appeared = await measurementsAppearedSince(client);
   const result = await action();
-  const created = (await listMeasurements(client)).filter((m) => !before.has(m.uuid));
-  return { result, created };
+  return { result, created: await appeared() };
+}
+
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Run an action whose whole purpose is to produce measurements, and return them —
+ * waiting until they actually exist, then proving it in the type.
+ *
+ * REW does not finish these before replying. /measure/command answers 202 Accepted
+ * in ~50ms and sweeps on in the background *even with blocking mode enabled*
+ * (verified live, REW 5.40 beta 132), so a single post-action read races the sweep
+ * and sees either nothing or a previous measurement. Polling the uuid diff is the
+ * only signal that actually reports completion.
+ *
+ * [LAW:parse-dont-validate] the non-empty tuple is the stamp: callers index it
+ * without guarding, because "no measurement" cannot reach them.
+ * [LAW:no-silent-failure] nothing by the deadline throws, naming the likely cause —
+ * never a null or empty-array result wearing the shape of success.
+ *
+ * Two limits, both inherent to polling rather than oversights:
+ *
+ * It returns on the FIRST measurement this action created, so a Sequential or
+ * Repeated run that publishes its channels one at a time can return before the
+ * later ones exist. REW offers no read-only "measurement in progress" endpoint —
+ * only /measure/subscribe (push, needs a callback URL) and the destructive probe of
+ * firing a command to be told one is already running — so there is nothing to wait
+ * on, and a settle window short enough to be cheap is too short to be correct when
+ * channels are a sweep apart. Callers must not promise more than "at least one".
+ *
+ * Any measurement appearing in the window is attributed to this action, and the
+ * window is now the command budget rather than one round trip. The precondition is
+ * therefore that measurement-creating commands are serialized against a REW
+ * instance — true of one agent driving one desktop REW, and the thing to fix with a
+ * lock at the client if concurrent drivers ever become real.
+ */
+export async function awaitMeasurementsCreatedBy<T>(
+  client: RewClient,
+  action: () => Promise<T>,
+  failureHint: string,
+): Promise<{ result: T; created: [IndexedMeasurement, ...IndexedMeasurement[]] }> {
+  const appeared = await measurementsAppearedSince(client);
+  // Before the action, not after: the wait and the request share one budget, so a
+  // command that nearly exhausts commandTimeoutMs before answering cannot then buy a
+  // second full window of polling. [LAW:one-source-of-truth] one deadline, as
+  // client.ts promises — computing it after `action()` made the caller-visible wait
+  // up to twice the documented figure.
+  const deadline = Date.now() + client.commandTimeoutMs;
+  const result = await action();
+  for (;;) {
+    // Read before sleeping: a command REW *did* finish synchronously costs no delay.
+    const [first, ...rest] = await appeared();
+    if (first !== undefined) return { result, created: [first, ...rest] };
+    if (Date.now() >= deadline) {
+      throw new Error(
+        `No new measurement appeared within ${Math.round(client.commandTimeoutMs / 1000)}s — ${failureHint}`,
+      );
+    }
+    await delay(client.measurementPollIntervalMs);
+  }
 }
 
 /** The most recently added measurement — REW appends at the highest index. */

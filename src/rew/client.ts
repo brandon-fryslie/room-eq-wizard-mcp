@@ -5,6 +5,7 @@
 // dance in five separate tools; that duplication is what this class exists to prevent.
 
 import type { z } from "zod";
+import { parseRewJson } from "./codec.js";
 
 export class RewApiError extends Error {
   constructor(
@@ -24,6 +25,8 @@ export interface RewClientOptions {
   readTimeoutMs?: number;
   /** Timeout for long-running commands (sweeps, EQ matching). Default 180s. */
   commandTimeoutMs?: number;
+  /** Gap between polls while waiting for a measurement to appear. Default 500ms. */
+  measurementPollIntervalMs?: number;
 }
 
 type Query = Record<string, string | number | boolean | undefined>;
@@ -31,16 +34,28 @@ type Query = Record<string, string | number | boolean | undefined>;
 export class RewClient {
   readonly baseUrl: string;
   private readonly readTimeoutMs: number;
-  private readonly commandTimeoutMs: number;
+  // How long a caller may wait for a command's *effect*, not just its HTTP reply —
+  // so the measurement waiter spends the same budget the request itself would.
+  // [LAW:one-source-of-truth] one "how long is too long" number, not two.
+  readonly commandTimeoutMs: number;
+  // [LAW:no-ambient-temporal-coupling] polling cadence is injected, never ambient,
+  // so tests drive the waiter without sleeping.
+  readonly measurementPollIntervalMs: number;
   // [LAW:no-ambient-temporal-coupling] REW answers long commands synchronously only
   // in its "blocking" mode; this flag makes that precondition owned state, enabled
   // once before the first command rather than hoped-for per call site.
+  //
+  // Blocking is NOT universal: /measure/command answers 202 Accepted and starts the
+  // sweep in the background even with blocking on — verified live against REW 5.40
+  // beta 132 (0.05s reply, sweep still running). Measurement-creating commands must
+  // therefore be awaited by observing their effect. See awaitMeasurementsCreatedBy.
   private blockingEnabled = false;
 
   constructor(options: RewClientOptions = {}) {
     this.baseUrl = (options.baseUrl ?? "http://127.0.0.1:4735").replace(/\/$/, "");
     this.readTimeoutMs = options.readTimeoutMs ?? 15_000;
     this.commandTimeoutMs = options.commandTimeoutMs ?? 180_000;
+    this.measurementPollIntervalMs = options.measurementPollIntervalMs ?? 500;
   }
 
   private async request(
@@ -78,7 +93,7 @@ export class RewClient {
     }
     if (text === "") return undefined;
     try {
-      return JSON.parse(text);
+      return parseRewJson(text);
     } catch {
       return text; // some endpoints answer with a bare string
     }

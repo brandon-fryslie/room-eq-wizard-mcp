@@ -1,12 +1,6 @@
 import { z } from "zod";
 import { defineTool, measurementIdInput } from "./registry.js";
-import {
-  distortionSchema,
-  impulseResponseOrMessageSchema,
-  noDataMessageSchema,
-  rt60Schema,
-  spectrumSchema,
-} from "../rew/types.js";
+import { distortionSchema, impulseResponseOrMessageSchema, noDataMessageSchema, rt60Schema, spectrumSchema, SMOOTHING_VALUES } from "../rew/types.js";
 import { decodeFloats } from "../rew/codec.js";
 import { decimateLog, summarizeSpectrum } from "../analysis/spectrum.js";
 import { fetchSpectrum, readMergeWriteSettings } from "./shared.js";
@@ -15,10 +9,17 @@ import { fetchSpectrum, readMergeWriteSettings } from "./shared.js";
 // sentinel when there is none. The spectrum shape is tried first. [LAW:parse-dont-validate]
 const groupDelayOrMessageSchema = z.union([spectrumSchema, noDataMessageSchema]);
 
+// [LAW:one-source-of-truth] spelled from SMOOTHING_VALUES, not hand-listed: a bare
+// z.string() lets "Variable" through to fail opaquely against live REW, which is the
+// exact spelling drift this PR removed everywhere else.
 const smoothingInput = z
-  .string()
+  .enum(SMOOTHING_VALUES)
   .optional()
-  .describe("REW smoothing, e.g. '1/6', '1/12', 'Variable', 'None' (default: the measurement's current smoothing)");
+  .describe(
+    "REW smoothing: 1/1, 1/2, 1/3, 1/6, 1/12, 1/24, 1/48, Var (variable), Psy " +
+      "(psychoacoustic), ERB, or None. Defaults to the measurement's current smoothing. " +
+      "Note 'Var'/'Psy', not 'Variable'/'Psychoacoustic' — REW rejects the long forms.",
+  );
 
 export const dataTools = [
   defineTool({
