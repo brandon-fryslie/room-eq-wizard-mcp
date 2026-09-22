@@ -54,11 +54,11 @@ against an interface you haven't run — earned its keep.
 1. `status`, then `list_measurements` — note existing UUIDs.
 2. Channel L (verify by read-back) → `run_sweep` 512k, −12 dBFS, name it
    descriptively, notes include the chain.
-3. **Ignore `run_sweep`'s return value.** It reports `completed:true` and hands
-   back whatever measurement is newest *at call time* — a stale one, twice in one
-   session. You will see a plausible measurement object and think "there it is."
-   It isn't. Poll `GET /measurements` until a UUID appears that was not in your
-   step-1 list; that diff is the only trustworthy identity of the new sweep.
+3. `run_sweep` now waits for the sweep to actually finish and returns
+   `{ measurements: [...] }` — the ones this call created, or it throws. Fixed
+   2026-09-22; the old advice to ignore its return value and poll by hand no
+   longer applies. If it throws, believe it: the sweep produced nothing, and
+   `get_diagnostics` will say why (a dead mic logs "No soundcard input data").
 4. Channel R (verify) → sweep → poll again.
 5. Compare / EQ, then **save the .mdat**.
 
@@ -103,18 +103,34 @@ per-file normalization would silently skew L/R balance. Deliver to
 Convolution, LEFT→channel 0, RIGHT→channel 1. Then verify: re-sweep both channels
 through the chain and compare against the flat target.
 
-## Known MCP bugs (open as of 2026-09-09)
+## Known MCP bugs (as of 2026-09-22)
 
-- `run_sweep` stale return — see workflow step 3.
-- `smooth_measurement` enum wrong: REW wants `Var`/`Psy`, ours sends
-  `Variable`/`Psychoacoustic` (400). Valid set: 1/1..1/48, Var, Psy, ERB, None.
-  Command bodies nest as `{command, parameters:{...}}`.
-- `analyze_response` reads unsmoothed data; smoothing changes the graph but not
-  its output.
-- `spl_meter_config` keys are `splWeighting`/`filter`/`highPassActive`; wrong keys
-  are silently dropped.
-- SPL meter can wedge and read −180 while `input_levels` works — trust
-  `input_levels` (SPL ≈ 94 + rms − (−28.2), the mic's dBFS@94 figure).
+Fixed on 2026-09-22 — the workarounds these needed are gone:
+
+- `run_sweep` stale return. It now polls the measurement list and returns only
+  UUIDs this call created, or throws. `measure_impedance` had the same bug.
+- `smooth_measurement` enum. Now spells REW's own `Var`/`Psy`; the long forms
+  are rejected at the schema instead of by a 400. Valid set: 1/1, 1/2, 1/3,
+  1/6, 1/12, 1/24, 1/48, Var, Psy, ERB, None.
+- `analyze_response` and smoothing. It never read unsmoothed data — it pinned
+  1/12. `smoothing` is now a parameter (default 1/12) and the result reports the
+  smoothing REW actually applied.
+- `read_spl` weighting. It posted `mode`/`weighting`, which REW silently drops,
+  so it reported whatever weighting the meter already had. Now posts
+  `showSPL`/`splWeighting` and errors if the reading comes back weighted
+  differently than requested.
+
+Still live:
+
+- REW's JSON is not quite JSON: a **running** SPL meter with no signal sends a
+  bare `NaN`. The client now normalises NaN/Infinity to `null`, so "no reading"
+  is `null`. A **stopped** meter reports −180 instead — still an answer-shaped
+  number meaning "not measuring" (ticket room-spl-meter-c13).
+- Still trust `input_levels` over the SPL meter for a quick level check
+  (SPL ≈ 94 + rms − (−28.2), the mic's dBFS@94 figure).
+- `/measure/command` answers **202 Accepted** and sweeps in the background even
+  with blocking mode on. Anything new that starts a measurement must observe its
+  effect, not its HTTP reply — use `awaitMeasurementsCreatedBy`.
 
 ## Data on studious
 
