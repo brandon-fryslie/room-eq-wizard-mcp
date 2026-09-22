@@ -13,7 +13,6 @@ import { groupListSchema, groupMeasurementsSchema, measurementListSchema, unknow
 import { alignmentStateEndpoints } from "../tools/alignment.js";
 import { RTA_CONTROL_COMMANDS, RTA_SAVE_COMMANDS } from "../tools/rta.js";
 import { allTools } from "../tools/index.js";
-import { measurementsCreatedBy } from "../tools/shared.js";
 
 const baseUrl = process.env.REW_API_URL ?? "http://127.0.0.1:4735";
 const rewIsUp = await fetch(`${baseUrl}/application/commands`, {
@@ -22,48 +21,9 @@ const rewIsUp = await fetch(`${baseUrl}/application/commands`, {
   (res) => res.ok,
   () => false,
 );
-const client = new RewClient({ baseUrl });
-
-/** 31 log-spaced points of a flat 75 dB response, "freq SPL phase" per line —
- *  the format REW's text frequency response import documents. */
-const flatResponseText = () =>
-  Array.from({ length: 31 }, (_, i) => `${(20 * 2 ** (i / 3)).toFixed(2)} 75.0 0.0`).join("\n");
-
-/**
- * Whether REW can read a file this test runner writes.
- *
- * No address check can answer that. In this rig `127.0.0.1:4735` is an ssh tunnel
- * to another machine, so REW looks local to every naive probe while sharing no
- * filesystem with the runner. [FRAMING:representation] the address is a map of
- * locality that the tunnel has already falsified; the only true territory is the
- * effect — write a file, ask REW to read it, see what happens.
- */
-async function rewReadsRunnerFiles(): Promise<boolean> {
-  const dir = await mkdtemp(join(tmpdir(), "rew-fs-probe-"));
-  const filePath = join(dir, "probe-fr.txt");
-  await writeFile(filePath, flatResponseText());
-  try {
-    const { created } = await measurementsCreatedBy(client, () =>
-      client.command("/import/frequency-response", { path: filePath }),
-    );
-    for (const m of created) await client.delete(`/measurements/${m.uuid}`);
-    return true;
-  } catch (error) {
-    // [LAW:no-silent-failure] exactly one answer means "different filesystem": REW
-    // naming the very path we just wrote as one it cannot find. Every other failure
-    // is a real one and rethrows rather than being laundered into a skipped test.
-    if (error instanceof RewApiError && error.message.includes(`${filePath} cannot be found`)) {
-      return false;
-    }
-    throw error;
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-}
-
-const rewReadsOurFiles = rewIsUp && (await rewReadsRunnerFiles());
 
 describe.skipIf(!rewIsUp)("live REW", () => {
+  const client = new RewClient({ baseUrl });
 
   // [LAW:single-enforcer] one place that looks a tool up, parses args through its
   // own Zod shape, and invokes its handler against the shared client.
@@ -111,30 +71,50 @@ describe.skipIf(!rewIsUp)("live REW", () => {
 
   // room-import-hwk acceptance: import a text FR file and see it appear in
   // /measurements. Runs the real tool end to end, then deletes what it created.
-  // The subject here is the *path* contract, so REW reading this runner's
-  // filesystem is a genuine precondition, not an inconvenience to route around.
-  it.skipIf(!rewReadsOurFiles)(
-    "imports a text frequency response file into /measurements (skipped unless REW runs on this filesystem)",
-    async () => {
-      const dir = await mkdtemp(join(tmpdir(), "rew-import-live-"));
-      const filePath = join(dir, "live-import-fr.txt");
-      await writeFile(filePath, flatResponseText());
-      try {
-        const result = (await tool("import_frequency_response")({ filePath })) as {
-          importedCount: number;
-          imported: Array<{ uuid: string }>;
-        };
-        expect(result.importedCount).toBeGreaterThanOrEqual(1);
-        const list = await client.get("/measurements", measurementListSchema);
-        expect(JSON.stringify(list)).toContain(result.imported[0].uuid);
-        for (const m of result.imported) {
-          await client.delete(`/measurements/${m.uuid}`);
-        }
-      } finally {
-        await rm(dir, { recursive: true, force: true });
+  //
+  // Its subject is the *path* contract, so REW reading this runner's filesystem is
+  // a genuine precondition — and this import attempt is the only thing that can
+  // establish it. No address check can: in this rig 127.0.0.1:4735 is an ssh tunnel
+  // to another machine, so REW looks local to every naive probe while sharing no
+  // filesystem. [FRAMING:representation] the address is a map the tunnel already
+  // falsified; the territory is whether REW can read the bytes we wrote, and asking
+  // it once is both the question and the test. A separate probe would be a second
+  // source of that one fact, and an import fired at collection time against a live
+  // instrument besides.
+  it("imports a text frequency response file into /measurements", async (ctx) => {
+    const dir = await mkdtemp(join(tmpdir(), "rew-import-live-"));
+    const filePath = join(dir, "live-import-fr.txt");
+    // 1/3-octave flat response, "freq SPL phase" per line — the format REW's
+    // frequency response text import documents.
+    const points = Array.from({ length: 31 }, (_, i) => `${(20 * 2 ** (i / 3)).toFixed(2)} 75.0 0.0`);
+    await writeFile(filePath, points.join("\n"));
+    try {
+      const result = (await tool("import_frequency_response")({ filePath }).catch(
+        (error: unknown) => {
+          // [LAW:no-silent-failure] exactly one answer means REW is not on this
+          // filesystem: a 400 saying it cannot find the file we just wrote. The skip
+          // names it. Every other failure rethrows rather than being laundered into
+          // a green-looking skip.
+          if (
+            error instanceof RewApiError &&
+            error.status === 400 &&
+            error.message.includes("cannot be found")
+          ) {
+            ctx.skip(`REW cannot read ${filePath} — it is not running on this filesystem`);
+          }
+          throw error;
+        },
+      )) as { importedCount: number; imported: Array<{ uuid: string }> };
+      expect(result.importedCount).toBeGreaterThanOrEqual(1);
+      const list = await client.get("/measurements", measurementListSchema);
+      expect(JSON.stringify(list)).toContain(result.imported[0].uuid);
+      for (const m of result.imported) {
+        await client.delete(`/measurements/${m.uuid}`);
       }
-    },
-  );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 
   // room-groups-wwa acceptance: full group lifecycle against a real REW. This
   // is also what pins the two shapes the API doc leaves open — whether GET
@@ -155,6 +135,9 @@ describe.skipIf(!rewIsUp)("live REW", () => {
         pointsPerOctave: 3,
         magnitude: Array.from({ length: 31 }, () => 75),
       })) as { imported: Array<{ uuid: string }> };
+      // runImport reads the measurement list once, so an import REW answered before
+      // publishing yields an empty array — say that, rather than dying on [0].uuid.
+      expect(imported.imported.length).toBeGreaterThan(0);
       measurementUuid = imported.imported[0].uuid;
 
       const created = (await client.post("/groups", { name: groupName })) as { uuid: string };
