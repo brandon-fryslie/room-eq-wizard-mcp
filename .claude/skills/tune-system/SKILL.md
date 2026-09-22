@@ -54,11 +54,15 @@ against an interface you haven't run — earned its keep.
 1. `status`, then `list_measurements` — note existing UUIDs.
 2. Channel L (verify by read-back) → `run_sweep` 512k, −12 dBFS, name it
    descriptively, notes include the chain.
-3. `run_sweep` now waits for the sweep to actually finish and returns
+3. `run_sweep` now waits until the sweep has produced a measurement and returns
    `{ measurements: [...] }` — the ones this call created, or it throws. Fixed
    2026-09-22; the old advice to ignore its return value and poll by hand no
    longer applies. If it throws, believe it: the sweep produced nothing, and
    `get_diagnostics` will say why (a dead mic logs "No soundcard input data").
+   One limit, and it does not bite this workflow because the rule above is to
+   sweep channels separately: in Sequential/Repeated mode it can return once the
+   FIRST channel has landed, because REW exposes no way to observe a whole run
+   finishing. Reach for those modes and you must read the measurement list back.
 4. Channel R (verify) → sweep.
 5. Compare / EQ, then **save the .mdat**.
 
@@ -109,6 +113,8 @@ Fixed on 2026-09-22 — the workarounds these needed are gone:
 
 - `run_sweep` stale return. It now polls the measurement list and returns only
   UUIDs this call created, or throws. `measure_impedance` had the same bug.
+  It waits for *a* measurement, not for the run: see the Sequential/Repeated
+  caveat in step 3 — that one is permanent, not a bug awaiting a fix.
 - `smooth_measurement` enum. Now spells REW's own `Var`/`Psy`; the long forms
   are rejected at the schema instead of by a 400. Valid set: 1/1, 1/2, 1/3,
   1/6, 1/12, 1/24, 1/48, Var, Psy, ERB, None.
