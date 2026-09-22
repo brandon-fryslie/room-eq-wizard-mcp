@@ -218,6 +218,28 @@ describe("run_sweep", () => {
     expect(postBody(calls, "/measure/command")).toEqual({ command: "SPL" });
   });
 
+  it("shares one budget between the command and the wait, rather than stacking two", async () => {
+    // The deadline is taken before the action runs. A command that itself consumes
+    // the whole budget must not then buy a second full window of polling — client.ts
+    // promises one commandTimeoutMs, and computing the deadline after `action()`
+    // made the caller-visible wait up to twice the documented figure.
+    const budgetMs = 120;
+    stubFetchWith(async (path) => {
+      // The sweep command itself consumes the entire budget before answering.
+      if (path === "/measure/command") await new Promise((r) => setTimeout(r, budgetMs + 40));
+      return path === "/measurements" ? { body: seeded } : {};
+    });
+    const started = Date.now();
+    await expect(
+      invoke(
+        "run_sweep",
+        new RewClient({ commandTimeoutMs: budgetMs, measurementPollIntervalMs: 0 }),
+      ),
+    ).rejects.toThrow(/No new measurement appeared/);
+    // Two stacked windows would put this near 2x the budget; one shared window does not.
+    expect(Date.now() - started).toBeLessThan(budgetMs * 2);
+  });
+
   it("rejects an inverted frequency range before touching the wire", async () => {
     const { calls } = stubFetch([{}]);
     await expect(

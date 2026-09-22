@@ -73,7 +73,7 @@ export const measureTools = [
   defineTool({
     name: "run_sweep",
     description:
-      "Configure and run a swept-sine SPL measurement. Requires REW's audio input/output to be configured and a REW Pro license for API-triggered measurement. Waits for the sweep to actually finish and returns the measurements it created (several in Sequential/Repeated mode, newest last); errors if the sweep produced none.",
+      "Configure and run a swept-sine SPL measurement. Requires REW's audio input/output to be configured and a REW Pro license for API-triggered measurement. Waits until the sweep has produced a measurement and returns what this call created, newest last; errors if it produced none. In Sequential/Repeated mode it can return once the first channel has landed \u2014 REW exposes no way to observe the whole run finishing \u2014 so read the list back if you need every channel.",
     inputSchema: {
       startFreqHz: z.number().min(1).default(20).describe("Sweep start frequency, Hz"),
       endFreqHz: z.number().min(10).default(20000).describe("Sweep end frequency, Hz"),
@@ -113,7 +113,8 @@ export const measureTools = [
         "check the mic is connected and REW's input is selected (get_audio_config), " +
           "then read get_diagnostics — REW logs sweep failures there",
       );
-      // Sequential and Repeated modes make several; report all, newest last.
+      // Whatever this call created, newest last; see awaitMeasurementsCreatedBy
+      // for why Sequential/Repeated can report only the first channel.
       return { measurements: created.map(summarize) };
     },
   }),

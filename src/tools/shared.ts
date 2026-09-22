@@ -136,6 +136,22 @@ const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
  * without guarding, because "no measurement" cannot reach them.
  * [LAW:no-silent-failure] nothing by the deadline throws, naming the likely cause —
  * never a null or empty-array result wearing the shape of success.
+ *
+ * Two limits, both inherent to polling rather than oversights:
+ *
+ * It returns on the FIRST measurement this action created, so a Sequential or
+ * Repeated run that publishes its channels one at a time can return before the
+ * later ones exist. REW offers no read-only "measurement in progress" endpoint —
+ * only /measure/subscribe (push, needs a callback URL) and the destructive probe of
+ * firing a command to be told one is already running — so there is nothing to wait
+ * on, and a settle window short enough to be cheap is too short to be correct when
+ * channels are a sweep apart. Callers must not promise more than "at least one".
+ *
+ * Any measurement appearing in the window is attributed to this action, and the
+ * window is now the command budget rather than one round trip. The precondition is
+ * therefore that measurement-creating commands are serialized against a REW
+ * instance — true of one agent driving one desktop REW, and the thing to fix with a
+ * lock at the client if concurrent drivers ever become real.
  */
 export async function awaitMeasurementsCreatedBy<T>(
   client: RewClient,
@@ -143,8 +159,13 @@ export async function awaitMeasurementsCreatedBy<T>(
   failureHint: string,
 ): Promise<{ result: T; created: [IndexedMeasurement, ...IndexedMeasurement[]] }> {
   const before = new Set((await listMeasurements(client)).map((m) => m.uuid));
-  const result = await action();
+  // Before the action, not after: the wait and the request share one budget, so a
+  // command that nearly exhausts commandTimeoutMs before answering cannot then buy a
+  // second full window of polling. [LAW:one-source-of-truth] one deadline, as
+  // client.ts promises — computing it after `action()` made the caller-visible wait
+  // up to twice the documented figure.
   const deadline = Date.now() + client.commandTimeoutMs;
+  const result = await action();
   for (;;) {
     // Read before sleeping: a command REW *did* finish synchronously costs no delay.
     const [first, ...rest] = (await listMeasurements(client)).filter((m) => !before.has(m.uuid));

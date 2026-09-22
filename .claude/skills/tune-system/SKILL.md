@@ -59,7 +59,7 @@ against an interface you haven't run — earned its keep.
    2026-09-22; the old advice to ignore its return value and poll by hand no
    longer applies. If it throws, believe it: the sweep produced nothing, and
    `get_diagnostics` will say why (a dead mic logs "No soundcard input data").
-4. Channel R (verify) → sweep → poll again.
+4. Channel R (verify) → sweep.
 5. Compare / EQ, then **save the .mdat**.
 
 Session config that is already set and should stay: acoustic timing reference,

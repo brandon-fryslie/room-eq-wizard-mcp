@@ -26,7 +26,7 @@ type CannedResponse = { status?: number; body?: unknown };
  * undefined means "no canned response" and answers 404.
  */
 function installRecordingFetch(
-  resolve: (path: string, callIndex: number) => CannedResponse | undefined,
+  resolve: (path: string, callIndex: number) => CannedResponse | undefined | Promise<CannedResponse | undefined>,
 ): { calls: FetchCall[] } {
   const calls: FetchCall[] = [];
   vi.stubGlobal(
@@ -37,7 +37,8 @@ function installRecordingFetch(
         method: init?.method ?? "GET",
         body: typeof init?.body === "string" ? JSON.parse(init.body) : undefined,
       });
-      const next = resolve(new URL(String(url)).pathname, calls.length - 1);
+      // Awaited so a resolver can model a slow endpoint; a plain value is unaffected.
+      const next = await resolve(new URL(String(url)).pathname, calls.length - 1);
       const status = next?.status ?? (next === undefined ? 404 : 200);
       return new Response(next?.body !== undefined ? JSON.stringify(next.body) : "", {
         status,
@@ -55,7 +56,7 @@ function installRecordingFetch(
  * [LAW:composability] the primitive the other two stubs are already built from.
  */
 export function stubFetchWith(
-  resolve: (path: string, callIndex: number) => CannedResponse | undefined,
+  resolve: (path: string, callIndex: number) => CannedResponse | undefined | Promise<CannedResponse | undefined>,
 ): { calls: FetchCall[] } {
   return installRecordingFetch(resolve);
 }

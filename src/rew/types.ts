@@ -207,5 +207,16 @@ export const groupMeasurementsSchema = arrayOrIndexed(measurementSummarySchema);
 /** For endpoints whose payload we relay verbatim (command lists, errors, process results). */
 export const unknownSchema = z.unknown();
 
-/** Scalar endpoints (e.g. /alignment-tool/delay-b) answer a bare number or its string form. */
-export const wireNumberSchema = z.coerce.number();
+/**
+ * Scalar endpoints (e.g. /alignment-tool/delay-b) answer a bare number or its
+ * string form. The union is the gate, not decoration: parseRewJson turns REW's
+ * bare `NaN` into `null`, and `z.coerce.number()` alone would coerce that null to
+ * `Number(null) === 0` — a silent, plausible "0 ms delay" standing in for "REW
+ * could not compute this". null matches neither arm and fails loudly instead.
+ * [LAW:no-silent-failure] [LAW:parse-dont-validate] a value that survives this is
+ * a real, finite reading; nothing downstream re-checks.
+ */
+export const wireNumberSchema = z
+  .union([z.number(), z.string()])
+  .transform(Number)
+  .refine(Number.isFinite, { message: "REW answered a value it could not compute" });

@@ -117,9 +117,9 @@ describe("generate_phase_version", () => {
 });
 
 describe("smooth_measurement", () => {
-  // REW answers a bad value with 400 and its own validValues list; that list is
-  // ['1/1','1/2','1/3','1/6','1/12','1/24','1/48','Var','Psy','ERB','None'] on
-  // API 0.9.6 — verified live, and the reason the long spellings are gone.
+  // The wire assertions below pin the strings REW actually accepts; REW's own
+  // validValues list (verified live on API 0.9.6) is recorded in the commit and the
+  // ticket, which is where the evidence for the enum belongs.
   it("sends Var, nested under parameters, for variable smoothing", async () => {
     const { calls } = stubFetch([{}, {}]);
     await invoke("smooth_measurement", new RewClient(), { measurement: "m1", smoothing: "Var" });
@@ -138,12 +138,15 @@ describe("smooth_measurement", () => {
     });
   });
 
-  it("rejects the long spellings REW answers 400 for", async () => {
-    stubFetch([{}, {}]);
+  it("rejects the long spellings at the schema, before any wire call", async () => {
+    // invoke() parses through the tool's input schema first, so these never reach
+    // the stub — which is the point: the enum is what stops them, not REW's 400.
+    const { calls } = stubFetch([{}, {}]);
     for (const dead of ["Variable", "Psychoacoustic"]) {
       await expect(
         invoke("smooth_measurement", new RewClient(), { measurement: "m1", smoothing: dead }),
       ).rejects.toThrow();
     }
+    expect(calls).toHaveLength(0);
   });
 });

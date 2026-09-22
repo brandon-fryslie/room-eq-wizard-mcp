@@ -140,3 +140,37 @@ describe("run_alignment_command", () => {
     expect(command?.body).toEqual({ command: "Align IRs at cursor", frequency: 120 });
   });
 });
+
+describe("scalar endpoints and REW's non-finite values", () => {
+  // parseRewJson turns REW's bare NaN into null. z.coerce.number() alone would turn
+  // that null into 0 — a plausible "0 ms delay" standing in for "REW could not
+  // compute this", which is the exact silent-success class this repo refuses.
+  it("fails loudly when REW could not compute the delay, rather than reporting 0 ms", async () => {
+    const { calls } = stubFetch([
+      {}, // index-a
+      {}, // index-b
+      {}, // mode
+      {}, // invert-b
+      {}, // blocking
+      { body: { message: "aligned" } }, // command
+      { body: null }, // delay-b — what a bare NaN becomes
+    ]);
+    await expect(
+      invoke("align_measurements", new RewClient(), {
+        measurementA: "2",
+        measurementB: "5",
+        frequencyHz: 100,
+      }),
+    ).rejects.toThrow();
+    expect(calls.at(-1)?.url).toContain("/alignment-tool/delay-b");
+  });
+
+  it("still accepts a delay REW sends as a bare string", async () => {
+    stubFetch([{}, {}, {}, {}, {}, { body: { message: "aligned" } }, { body: "-2.25" }]);
+    const result = await invoke("align_measurements", new RewClient(), {
+      measurementA: "2",
+      measurementB: "5",
+    });
+    expect(result).toMatchObject({ delayBMs: -2.25 });
+  });
+});
